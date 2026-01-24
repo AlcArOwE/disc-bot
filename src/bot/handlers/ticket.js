@@ -381,7 +381,8 @@ async function postVouch(client, ticket) {
 
         const vouchMsg = config.response_templates.vouch_win
             .replace('{amount}', amount.toFixed(2))
-            .replace('{opponent}', `<@${opponentId}>`);
+            .replace('{opponent}', `<@${opponentId}>`)
+            .replace('{middleman}', `<@${ticket.data.middlemanId}>`);
 
         await humanDelay(vouchMsg);
         await vouchChannel.send(vouchMsg);

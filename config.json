@@ -46,7 +46,7 @@
     },
     "response_templates": {
         "bet_offer": "MY {calculated} vs your {base}, I win ties. Create a ticket dice ft5",
-        "vouch_win": "+vouch won ${amount} vs {opponent}",
+        "vouch_win": "+vouch won ${amount} vs {opponent} mm {middleman}",
         "payment_sent": "Sent! TXID: {txid}"
     }
 }
