@@ -142,7 +142,17 @@ async function handleAwaitingPaymentAddress(message, ticket) {
 
     // Calculate payment amount (this would need USD to crypto conversion in production)
     // For now, we're assuming amounts are already in crypto
+    // Check if payment is already being processed (Lock)
+    if (ticket.data.paymentLocked) {
+        logger.warn('Payment already in progress (Locked)', { channelId: ticket.channelId });
+        return false;
+    }
+
     const amount = ticket.data.ourBet;
+
+    // Lock payment to prevent race conditions
+    ticket.updateData({ paymentLocked: true });
+    saveState();
 
     // Send payment
     await humanDelay();
@@ -184,6 +194,10 @@ async function handleAwaitingPaymentAddress(message, ticket) {
 
         await humanDelay();
         await message.channel.send(`Payment failed: ${result.error}`);
+
+        // Release lock so we can try again
+        ticket.updateData({ paymentLocked: false });
+        saveState();
     }
 
     return true;
