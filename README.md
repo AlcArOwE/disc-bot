@@ -84,6 +84,13 @@ AWAITING_TICKET → AWAITING_MIDDLEMAN → AWAITING_PAYMENT_ADDRESS
                                               ↓
         GAME_COMPLETE ← GAME_IN_PROGRESS ← PAYMENT_SENT
 ```
+*(Note: `AWAITING_GAME_START` is bypassed for Auto-Dice flow)*
+
+### Reliability & Automation
+- **Auto-Dice**: Automatically confirms payment and starts rolling (no human action needed)
+- **State Persistence**: Survives bot restarts by saving game state to disk
+- **Strict Rate Limiting**: Enforces 2.0s - 2.5s delay on ALL actions to prevent bans
+- **Safety**: Unlocks stuck payments on boot and handles missing middleman data gracefully
 
 ### Dice Game
 - First-to-5 wins
