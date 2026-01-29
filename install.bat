@@ -9,7 +9,7 @@ echo.
 call npm --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] NPM is not installed or not in PATH!
-    echo Please install Node.js (which includes NPM) from https://nodejs.org/
+    echo Please install Node.js - which includes NPM - from https://nodejs.org/
     echo.
     pause
     exit
