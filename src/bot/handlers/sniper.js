@@ -77,11 +77,21 @@ async function handleMessage(message) {
     // CRITICAL: Set cooldown IMMEDIATELY to prevent duplicate snipes during delay
     ticketManager.setCooldown(userId);
 
+    // Check permissions
+    // If we're not in a guild (DM), we generally have permissions.
+    // If in a guild, check if we can send messages.
+    if (message.guild && message.channel.permissionsFor(message.client.user) &&
+        !message.channel.permissionsFor(message.client.user).has('SEND_MESSAGES')) {
+        logger.warn('Missing permissions to snipe in channel', { channelId: message.channel.id });
+        return false;
+    }
+
     // Show typing indicator immediately
     try {
         await message.channel.sendTyping();
     } catch (e) {
-        // Ignore typing errors
+        // Ignore typing errors (can happen if perm is missing but cached perm says yes, or rate limits)
+        logger.debug('Failed to send typing', { error: e.message });
     }
 
     // Human-like delay before responding

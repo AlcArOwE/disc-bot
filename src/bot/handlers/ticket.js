@@ -42,6 +42,17 @@ async function handleMessage(message) {
         return handlePotentialNewTicket(message);
     }
 
+    // Latching Logic: If ticket exists but has no opponent (e.g. auto-created),
+    // try to latch onto the first user who speaks
+    if (!ticket.data.opponentId) {
+        const latched = await handleLatchOpponent(message, ticket);
+        if (latched) {
+            // If we just latched, we can continue processing or stop here.
+            // Continuing allows them to trigger commands immediately.
+            logger.info('Latched onto opponent', { channelId, userId: message.author.id });
+        }
+    }
+
     // Route to appropriate handler based on state
     switch (ticket.getState()) {
         case STATES.AWAITING_TICKET:
@@ -71,6 +82,21 @@ async function handlePotentialNewTicket(message) {
         return false;
     }
 
+    // Create ticket with 0 bet initially (opponentId will be set by latch logic below)
+    // We pass null for opponentId first to let handleLatchOpponent handle validation
+    const ticket = createTicket(message.channel.id, null, 0, 0);
+
+    // Attempt latch immediately
+    return await handleLatchOpponent(message, ticket, true);
+}
+
+/**
+ * Attempt to latch onto a user as the opponent
+ * @param {Message} message
+ * @param {TicketStateMachine} ticket
+ * @param {boolean} isNew - If true, this is a fresh ticket
+ */
+async function handleLatchOpponent(message, ticket, isNew = false) {
     const userId = message.author.id;
 
     // Ignore bots and middlemen from latching
@@ -78,18 +104,28 @@ async function handlePotentialNewTicket(message) {
         return false;
     }
 
-    // Latch onto this user as the opponent
-    logger.info('Latching onto opponent in ticket channel', {
+    // Update ticket with opponent
+    ticket.updateData({ opponentId: userId });
+
+    // Update TicketManager index manually since we modified data directly
+    // (createTicket usually handles this, but here we might be updating an existing one)
+    ticketManager.userIndex.set(userId, ticket);
+    ticketManager.setCooldown(userId);
+
+    saveState();
+
+    logger.info('Latched onto opponent in ticket channel', {
         channelId: message.channel.id,
         userId
     });
 
-    // Create ticket with 0 bet initially
-    createTicket(message.channel.id, userId, 0, 0);
-
     // Notify
-    await humanDelay();
-    await message.reply('Ticket initialized. Please state your wager (e.g. "10v10").');
+    if (isNew || !ticket.data.announcedLatch) {
+        await humanDelay();
+        await message.reply('Ticket initialized. Please state your wager (e.g. "10v10").');
+        ticket.updateData({ announcedLatch: true });
+        saveState();
+    }
 
     return true;
 }
