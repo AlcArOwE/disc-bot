@@ -19,6 +19,7 @@ function validateEnvironment() {
     // Check .env
     if (!process.env.DISCORD_TOKEN) issues.push('❌ DISCORD_TOKEN is missing');
     if (!process.env.LTC_PRIVATE_KEY && config.crypto_network === 'LTC') issues.push('❌ LTC_PRIVATE_KEY is missing');
+    if (!process.env.SOL_PRIVATE_KEY && config.crypto_network === 'SOL') issues.push('❌ SOL_PRIVATE_KEY is missing');
 
     // Check config
     if (!config.middleman_ids || config.middleman_ids.length === 0) issues.push('⚠️ No middleman_ids configured');

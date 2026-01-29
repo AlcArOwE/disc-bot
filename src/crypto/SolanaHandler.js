@@ -84,6 +84,68 @@ class SolanaHandler {
     }
 
     /**
+     * Get recent transactions
+     * @param {number} limit - Number of transactions to fetch
+     * @returns {Promise<Array<{hash: string, value: number, time: number}>>}
+     */
+    async getRecentTransactions(limit = 10) {
+        if (!await this.initialize()) return [];
+
+        try {
+            const signatures = await this.connection.getSignaturesForAddress(
+                this.publicKey,
+                { limit }
+            );
+
+            const txs = [];
+            for (const sig of signatures) {
+                // Skip errors
+                if (sig.err) continue;
+
+                const tx = await this.connection.getParsedTransaction(sig.signature, {
+                    maxSupportedTransactionVersion: 0
+                });
+
+                if (!tx || !tx.meta || !tx.transaction) continue;
+
+                // Calculate amount received by us
+                // Iterate over preBalances and postBalances
+                const accountIndex = tx.transaction.message.accountKeys.findIndex(key => {
+                    const keyStr = key.pubkey ? key.pubkey.toString() : key.toString();
+                    // DEBUG LOG
+                    console.log(`Checking key: ${keyStr} vs ${this.publicKey.toString()}`);
+                    return keyStr === this.publicKey.toString();
+                });
+
+                if (accountIndex === -1) {
+                    console.log('Account index not found');
+                    continue;
+                }
+
+                const preBalance = tx.meta.preBalances[accountIndex];
+                const postBalance = tx.meta.postBalances[accountIndex];
+
+                // We only care if we received money (post > pre)
+                if (postBalance > preBalance) {
+                    const amountSol = (postBalance - preBalance) / 1000000000;
+
+                    txs.push({
+                        hash: sig.signature,
+                        value: amountSol,
+                        time: (tx.blockTime || 0) * 1000, // Unix timestamp to ms
+                        confirmations: 'finalized' // Solana finalized
+                    });
+                }
+            }
+
+            return txs;
+        } catch (error) {
+            logger.error('Failed to fetch SOL transactions', { error: error.message });
+            return [];
+        }
+    }
+
+    /**
      * Send Solana payment
      * @param {string} toAddress - Recipient address
      * @param {number} amount - Amount in SOL

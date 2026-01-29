@@ -14,8 +14,8 @@ class PayoutMonitor {
     constructor() {
         this.client = null;
         this.interval = null;
-        // Check every minute
-        this.checkInterval = 60 * 1000;
+        // Check every 10 seconds for instant feeling
+        this.checkInterval = 10 * 1000;
         // Track processed transactions to prevent double-spending
         this.processedTxIds = new Set();
     }
