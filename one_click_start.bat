@@ -43,10 +43,9 @@ if not exist .env (
     )
 )
 if not exist config.json (
-    if exist config.example.json (
-        copy config.example.json config.json >nul
-        echo [WARN] Created config.json file. Please edit it!
-    )
+    echo [ERROR] config.json is missing! Please re-download the bot.
+    pause
+    exit
 )
 echo [OK] Config checks done.
 echo.
