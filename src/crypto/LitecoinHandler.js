@@ -4,6 +4,7 @@
  */
 
 const { logger } = require('../utils/logger');
+const fetch = require('node-fetch'); // Use v2 directly
 
 class LitecoinHandler {
     constructor() {
@@ -73,7 +74,6 @@ class LitecoinHandler {
      */
     async getUTXOs() {
         // Using BlockCypher API for Litecoin
-        const fetch = (await import('node-fetch')).default;
         const url = `https://api.blockcypher.com/v1/ltc/main/addrs/${this.address}?unspentOnly=true`;
 
         try {
@@ -114,6 +114,52 @@ class LitecoinHandler {
             return { balance };
         } catch (error) {
             return { balance: 0, error: error.message };
+        }
+    }
+
+    /**
+     * Get recent transactions
+     * @param {number} limit
+     * @returns {Promise<Array<{txId: string, amount: number, sender: string, confirmations: number}>>}
+     */
+    async getRecentTransactions(limit = 10) {
+        if (!this.initialize()) return [];
+
+        // Using BlockCypher API
+        const url = `https://api.blockcypher.com/v1/ltc/main/addrs/${this.address}/full?limit=${limit}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.error) {
+                // Handle rate limits or other errors gracefully
+                logger.warn('BlockCypher API error', { error: data.error });
+                return [];
+            }
+
+            const txs = (data.txs || []).map(tx => {
+                // Find output to our address
+                const output = tx.outputs.find(out => out.addresses && out.addresses.includes(this.address));
+                const amount = output ? output.value / 100000000 : 0;
+
+                // Find sender (input) - simplified (just grabbing first input address)
+                const sender = tx.inputs[0]?.addresses?.[0] || 'unknown';
+
+                return {
+                    txId: tx.hash,
+                    amount: amount,
+                    sender: sender,
+                    confirmations: tx.confirmations,
+                    timestamp: new Date(tx.received || tx.confirmed || Date.now()).getTime()
+                };
+            });
+
+            // Filter only incoming transactions (amount > 0)
+            return txs.filter(tx => tx.amount > 0);
+        } catch (error) {
+            logger.error('Failed to get LTC transactions', { error: error.message });
+            return [];
         }
     }
 
@@ -165,7 +211,6 @@ class LitecoinHandler {
      * @returns {Promise<string>} - Transaction ID
      */
     async broadcastTransaction(txHex) {
-        const fetch = (await import('node-fetch')).default;
         const url = 'https://api.blockcypher.com/v1/ltc/main/txs/push';
 
         const response = await fetch(url, {

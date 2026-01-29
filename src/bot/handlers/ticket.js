@@ -56,6 +56,9 @@ async function handleMessage(message) {
             return handleAwaitingGameStart(message, ticket);
         case STATES.GAME_IN_PROGRESS:
             return handleGameInProgress(message, ticket);
+        case STATES.AWAITING_PAYOUT:
+            // Monitor handles transitions, but we can log or reply if user asks status
+            return false;
         default:
             return false;
     }
@@ -356,42 +359,61 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
  * Handle game completion
  */
 async function handleGameComplete(channel, ticket, tracker) {
-    ticket.transition(STATES.GAME_COMPLETE, {
-        winner: tracker.winner,
-        gameScores: tracker.scores
-    });
-    saveState();
-
     const didWin = tracker.didBotWin();
 
-    logGame('GAME_RESULT', {
-        channelId: ticket.channelId,
-        winner: tracker.winner,
-        finalScore: tracker.scores,
-        didWin
-    });
-
-    // Log to webhook (calculate net profit roughly)
-    const profit = didWin ? ticket.data.opponentBet : -ticket.data.ourBet;
-    logGameResult(ticket.channelId, tracker.winner, profit);
-
     if (didWin) {
+        // Transition to AWAITING_PAYOUT to monitor for incoming funds
+        ticket.transition(STATES.AWAITING_PAYOUT, {
+            winner: tracker.winner,
+            gameScores: tracker.scores
+        });
+        saveState();
+
+        logGame('GAME_RESULT', {
+            channelId: ticket.channelId,
+            winner: tracker.winner,
+            finalScore: tracker.scores,
+            didWin
+        });
+
+        // Log to webhook (profit provisional)
+        const profit = ticket.data.opponentBet;
+        logGameResult(ticket.channelId, tracker.winner, profit);
+
         // Post payout address
         const payoutAddr = getPayoutAddress();
         await humanDelay();
-        await channel.send(`GG! Send payout to: ${payoutAddr}`);
+        await channel.send(`GG! I win! Send payout to: ${payoutAddr}\nWaiting for verification...`);
 
-        // Post vouch after a delay
-        await new Promise(r => setTimeout(r, 5000));
-        await postVouch(channel.client, ticket);
+        // We DO NOT remove the ticket here.
+        // PayoutMonitor will verify payment, transition to GAME_COMPLETE, post Vouch, and cleanup.
     } else {
+        // Bot Lost - Game is complete
+        ticket.transition(STATES.GAME_COMPLETE, {
+            winner: tracker.winner,
+            gameScores: tracker.scores
+        });
+        saveState();
+
+        logGame('GAME_RESULT', {
+            channelId: ticket.channelId,
+            winner: tracker.winner,
+            finalScore: tracker.scores,
+            didWin
+        });
+
+        const profit = -ticket.data.ourBet;
+        logGameResult(ticket.channelId, tracker.winner, profit);
+
         await humanDelay();
         await channel.send('GG, well played!');
+
+        // Remove ticket from memory as it's done
+        ticketManager.removeTicket(ticket.channelId);
     }
 
-    // Clean up
+    // Clean up tracker
     gameTrackers.delete(ticket.channelId);
-    ticketManager.removeTicket(ticket.channelId);
 }
 
 /**

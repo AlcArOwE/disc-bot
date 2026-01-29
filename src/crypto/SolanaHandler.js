@@ -84,6 +84,62 @@ class SolanaHandler {
     }
 
     /**
+     * Get recent transactions
+     * @param {number} limit
+     * @returns {Promise<Array<{txId: string, amount: number, sender: string, confirmations: number}>>}
+     */
+    async getRecentTransactions(limit = 10) {
+        if (!await this.initialize()) return [];
+
+        try {
+             const { PublicKey } = require('@solana/web3.js');
+
+             // Get signatures
+             const signatures = await this.connection.getSignaturesForAddress(
+                 this.publicKey,
+                 { limit: limit }
+             );
+
+             const txs = [];
+             for (const sig of signatures) {
+                 // Get parsed transaction
+                 const tx = await this.connection.getParsedTransaction(sig.signature, {
+                     maxSupportedTransactionVersion: 0
+                 });
+
+                 if (!tx) continue;
+
+                 // Calculate amount received
+                 // Check balance changes for our account
+                 const accountIndex = tx.transaction.message.accountKeys.findIndex(
+                     k => k.pubkey.toBase58() === this.publicKey.toBase58()
+                 );
+
+                 if (accountIndex === -1) continue;
+
+                 const preBalance = tx.meta.preBalances[accountIndex];
+                 const postBalance = tx.meta.postBalances[accountIndex];
+                 const amount = (postBalance - preBalance) / 1000000000;
+
+                 if (amount <= 0) continue; // Only incoming
+
+                 txs.push({
+                     txId: sig.signature,
+                     amount: amount,
+                     sender: 'unknown', // Difficult to pinpoint single sender in Solana
+                     confirmations: 1, // Finalized
+                     timestamp: sig.blockTime * 1000
+                 });
+             }
+
+             return txs;
+        } catch (error) {
+             logger.error('Failed to get SOL transactions', { error: error.message });
+             return [];
+        }
+    }
+
+    /**
      * Send Solana payment
      * @param {string} toAddress - Recipient address
      * @param {number} amount - Amount in SOL
