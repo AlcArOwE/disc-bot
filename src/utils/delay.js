@@ -50,8 +50,8 @@ function getTypingDelay(message) {
  * @returns {Promise<void>}
  */
 async function humanDelay(message = '') {
-    // Initial "thinking" delay (human-like reaction time)
-    const thinkDelay = getRandomDelay(500, 1500);
+    // Initial "thinking" delay (Targeting ~3-3.5s total with typing)
+    const thinkDelay = getRandomDelay(2400, 2900);
     await sleep(thinkDelay);
 
     // Typing delay based on message length
