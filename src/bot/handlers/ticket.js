@@ -7,8 +7,8 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
-const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
+const { isMiddleman, validatePaymentAddress, validateBetAmount } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
 const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
@@ -29,13 +29,15 @@ async function handleMessage(message) {
     const ticket = ticketManager.getTicket(channelId);
 
     // DEBUG: Log every message that goes through ticket handler
-    logger.debug('Ticket handler processing', {
-        channelId,
-        hasTicket: !!ticket,
-        state: ticket?.getState() || 'NO_TICKET',
-        authorId: message.author.id,
-        content: message.content.substring(0, 50)
-    });
+    if (logger.isLevelEnabled('debug')) {
+        logger.debug('Ticket handler processing', {
+            channelId,
+            hasTicket: !!ticket,
+            state: ticket?.getState() || 'NO_TICKET',
+            authorId: message.author.id,
+            content: message.content.substring(0, 50)
+        });
+    }
 
     // If no ticket exists, check if this is a new ticket being created
     if (!ticket) {
@@ -71,10 +73,34 @@ async function handlePotentialNewTicket(message) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    // Check for bet pattern
+    const betData = extractBetAmounts(message.content);
+    if (!betData) {
+        return false;
+    }
+
+    const opponentBet = betData.opponent;
+
+    // Validate bet
+    const validation = validateBetAmount(opponentBet);
+    if (!validation.valid) {
+        logger.debug('Invalid bet in ticket channel', { amount: opponentBet, reason: validation.reason });
+        return false;
+    }
+
+    // Calculate our bet
+    const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
+    const ourBet = new BigNumber(opponentBet).times(taxMultiplier);
+
+    logger.info('Detected bet in ticket channel, creating ticket', {
+        channelId: message.channel.id,
+        opponentBet,
+        ourBet: ourBet.toNumber()
+    });
+
+    // Create ticket
+    createTicket(message.channel.id, message.author.id, opponentBet, ourBet.toNumber());
+    return true;
 }
 
 /**
@@ -98,12 +124,14 @@ async function handleAwaitingMiddleman(message, ticket) {
 
     // DEBUG: Log middleman check
     const isMiddlemanResult = isMiddleman(userId);
-    logger.debug('Middleman check', {
-        channelId: ticket.channelId,
-        userId,
-        isMiddleman: isMiddlemanResult,
-        configMiddlemen: config.middleman_ids?.length || 0
-    });
+    if (logger.isLevelEnabled('debug')) {
+        logger.debug('Middleman check', {
+            channelId: ticket.channelId,
+            userId,
+            isMiddleman: isMiddlemanResult,
+            configMiddlemen: config.middleman_ids?.length || 0
+        });
+    }
 
     // Check if message is from a middleman
     if (isMiddlemanResult) {
@@ -162,8 +190,6 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         return true;
     }
 
-    // Calculate payment amount (this would need USD to crypto conversion in production)
-    // For now, we're assuming amounts are already in crypto
     // Check if payment is already being processed (Lock)
     if (ticket.data.paymentLocked) {
         logger.warn('Payment already in progress (Locked)', { channelId: ticket.channelId });
@@ -291,14 +317,37 @@ async function handleGameInProgress(message, ticket) {
     }
 
     // Check if it's our turn to respond to a dice roll
-    // This depends on the specific dice bot being used
 
-    // Option 1: If opponent just rolled, we see their result and roll ours
+    // Strict Check: Only accept dice results from the opponent
+    // This prevents the bot from reacting to its own roll output (e.g., from a dice bot)
     const opponentRoll = extractDiceResult(message.content);
-    if (opponentRoll && message.author.id !== message.client.user.id) {
-        // Record their roll and do our roll
+
+    if (opponentRoll && message.author.id === ticket.data.opponentId) {
         await gameActionDelay();
-        await rollDice(message.channel, ticket, opponentRoll, tracker);
+
+        // Check if we have a pending bot roll from a previous turn
+        if (tracker.hasPendingBotRoll()) {
+            // We rolled first, now we have opponent's roll. Finish the round.
+            const botRoll = tracker.consumePendingBotRoll();
+            const result = tracker.recordRound(botRoll, opponentRoll);
+
+            // Update ticket
+            ticket.updateData({ gameScores: tracker.scores });
+            saveState();
+
+            // Announce result
+            const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
+            await humanDelay(roundMsg);
+            await message.channel.send(roundMsg);
+
+            // Check game over
+            if (result.gameOver) {
+                await handleGameComplete(message.channel, ticket, tracker);
+            }
+        } else {
+            // We haven't rolled yet (Opponent went first). Roll now.
+            await rollDice(message.channel, ticket, opponentRoll, tracker);
+        }
         return true;
     }
 
@@ -306,9 +355,12 @@ async function handleGameInProgress(message, ticket) {
     if (message.author.id === ticket.data.middlemanId) {
         const content = message.content.toLowerCase();
         if (content.includes('roll') || content.includes('dice') || content.includes('your turn')) {
-            await gameActionDelay();
-            await rollDice(message.channel, ticket, null, tracker);
-            return true;
+            // Only roll if we don't have a pending roll
+            if (!tracker.hasPendingBotRoll()) {
+                await gameActionDelay();
+                await rollDice(message.channel, ticket, null, tracker);
+                return true;
+            }
         }
     }
 
@@ -326,11 +378,11 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
     // Roll our dice
     const botRoll = DiceEngine.roll();
 
-    // Send dice command/result
+    // Send dice command/result (Visual)
     const diceCmd = config.game_settings.dice_command;
     await channel.send(diceCmd);
 
-    // If we have opponent's roll, record the round
+    // If we have opponent's roll, record the round immediately
     if (opponentRoll !== null && tracker) {
         await humanDelay();
 
@@ -349,6 +401,11 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         if (result.gameOver) {
             await handleGameComplete(channel, ticket, tracker);
         }
+    } else if (tracker) {
+        // We are going first. Store roll as pending and wait for opponent.
+        tracker.setPendingBotRoll(botRoll);
+        saveState(); // Persist pending state
+        logger.info('Bot rolled first, pending result stored', { channelId: ticket.channelId, roll: botRoll });
     }
 }
 

@@ -24,6 +24,41 @@ class ScoreTracker {
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
+        this.pendingBotRoll = null;
+    }
+
+    /**
+     * Set pending bot roll (when bot goes first)
+     * @param {number} roll - The bot's roll
+     */
+    setPendingBotRoll(roll) {
+        this.pendingBotRoll = roll;
+    }
+
+    /**
+     * Get pending bot roll
+     * @returns {number | null}
+     */
+    getPendingBotRoll() {
+        return this.pendingBotRoll;
+    }
+
+    /**
+     * Check if there is a pending bot roll
+     * @returns {boolean}
+     */
+    hasPendingBotRoll() {
+        return this.pendingBotRoll !== null;
+    }
+
+    /**
+     * Consume pending bot roll (returns and clears it)
+     * @returns {number | null}
+     */
+    consumePendingBotRoll() {
+        const roll = this.pendingBotRoll;
+        this.pendingBotRoll = null;
+        return roll;
     }
 
     /**
@@ -179,7 +214,8 @@ class ScoreTracker {
             rounds: this.rounds,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
-            winner: this.winner
+            winner: this.winner,
+            pendingBotRoll: this.pendingBotRoll
         };
     }
 
@@ -196,6 +232,7 @@ class ScoreTracker {
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
         tracker.winner = json.winner;
+        tracker.pendingBotRoll = json.pendingBotRoll || null;
         return tracker;
     }
 }
