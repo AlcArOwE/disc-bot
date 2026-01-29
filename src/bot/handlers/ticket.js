@@ -7,7 +7,7 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
@@ -65,16 +65,39 @@ async function handleMessage(message) {
  * Check if this message represents a new ticket
  */
 async function handlePotentialNewTicket(message) {
-    // Check if channel name looks like a ticket
+    // Check if channel name looks like a ticket or wager
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    if (!channelName.includes('ticket') && !channelName.includes('wager')) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    // Ignore bots (including ourselves)
+    if (message.author.bot) return false;
+
+    // Ignore middlemen - we only latch onto opponents
+    if (isMiddleman(message.author.id)) return false;
+
+    logger.info('Late ticket detection - Latching opponent', {
+        channelId: message.channel.id,
+        userId: message.author.id,
+        content: message.content
+    });
+
+    // Try to parse bet from the message
+    const betData = extractBetAmounts(message.content);
+    const opponentBet = betData ? betData.opponent : 0;
+    const ourBet = betData ? betData.opponent : 0; // Assume matched bet
+
+    if (opponentBet > 0) {
+        logger.info('Parsed bet from latching message', { opponentBet });
+    } else {
+        logger.warn('Could not parse bet from latching message, defaulting to 0', { content: message.content });
+    }
+
+    // Create the ticket with this user as opponent
+    createTicket(message.channel.id, message.author.id, opponentBet, ourBet);
+
+    return true;
 }
 
 /**
@@ -164,13 +187,21 @@ async function handleAwaitingPaymentAddress(message, ticket) {
 
     // Calculate payment amount (this would need USD to crypto conversion in production)
     // For now, we're assuming amounts are already in crypto
+
+    const amount = ticket.data.ourBet;
+
+    // SAFETY GUARD: Ensure amount is positive and valid
+    if (!amount || amount <= 0 || isNaN(amount)) {
+        logger.warn('Payment aborted: Invalid bet amount', { channelId: ticket.channelId, amount });
+        await message.reply('⚠️ Error: Invalid bet amount. Payment aborted.');
+        return false;
+    }
+
     // Check if payment is already being processed (Lock)
     if (ticket.data.paymentLocked) {
         logger.warn('Payment already in progress (Locked)', { channelId: ticket.channelId });
         return false;
     }
-
-    const amount = ticket.data.ourBet;
 
     // Lock payment to prevent race conditions
     ticket.updateData({ paymentLocked: true });
@@ -323,21 +354,34 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         tracker = gameTrackers.get(ticket.channelId);
     }
 
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
+    // Check if we have a pending roll from going first
+    let botRoll = tracker.getPendingBotRoll();
 
-    // Send dice command/result
-    const diceCmd = config.game_settings.dice_command;
-    await channel.send(diceCmd);
+    if (botRoll === null) {
+        // No pending roll, so we roll now
+        botRoll = DiceEngine.roll();
+
+        // Send dice command/result
+        const diceCmd = config.game_settings.dice_command;
+        await channel.send(diceCmd);
+    } else {
+        logger.info('Using pending bot roll', { botRoll });
+    }
 
     // If we have opponent's roll, record the round
     if (opponentRoll !== null && tracker) {
+        // Clear pending roll since we are using it
+        tracker.clearPendingBotRoll();
+
         await humanDelay();
 
         const result = tracker.recordRound(botRoll, opponentRoll);
 
-        // Update ticket with current scores
-        ticket.updateData({ gameScores: tracker.scores });
+        // Update ticket with current scores AND tracker state
+        ticket.updateData({
+            gameScores: tracker.scores,
+            trackerState: tracker.toJSON()
+        });
         saveState();
 
         // Announce round result
@@ -349,6 +393,17 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         if (result.gameOver) {
             await handleGameComplete(channel, ticket, tracker);
         }
+    } else if (tracker) {
+        // We rolled (bot went first) but don't have opponent roll yet
+        tracker.setPendingBotRoll(botRoll);
+
+        ticket.updateData({
+            gameScores: tracker.scores,
+            trackerState: tracker.toJSON()
+        });
+        saveState();
+
+        logger.info('Bot rolled pending', { channelId: ticket.channelId, botRoll });
     }
 }
 

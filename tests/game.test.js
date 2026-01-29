@@ -121,10 +121,24 @@ describe('ScoreTracker', () => {
         });
     });
 
+    describe('pending roll', () => {
+        it('should set and get pending roll', () => {
+            tracker.setPendingBotRoll(5);
+            assert.strictEqual(tracker.getPendingBotRoll(), 5);
+        });
+
+        it('should clear pending roll', () => {
+            tracker.setPendingBotRoll(5);
+            tracker.clearPendingBotRoll();
+            assert.strictEqual(tracker.getPendingBotRoll(), null);
+        });
+    });
+
     describe('serialization', () => {
         it('should serialize and deserialize correctly', () => {
             tracker.recordRound(6, 1);
             tracker.recordRound(6, 2);
+            tracker.setPendingBotRoll(4);
 
             const json = tracker.toJSON();
             const restored = ScoreTracker.fromJSON(json);
@@ -132,6 +146,7 @@ describe('ScoreTracker', () => {
             assert.strictEqual(restored.scores.bot, 2);
             assert.strictEqual(restored.scores.opponent, 0);
             assert.strictEqual(restored.rounds.length, 2);
+            assert.strictEqual(restored.pendingBotRoll, 4);
         });
     });
 });

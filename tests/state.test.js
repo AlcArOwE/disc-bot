@@ -133,6 +133,19 @@ describe('TicketManager', () => {
             manager.removeTicket('channel-1');
 
             assert.strictEqual(manager.getTicket('channel-1'), undefined);
+            assert.strictEqual(manager.getTicketByUser('user-1'), undefined);
+        });
+
+        it('should maintain userIndex correctly on cleanup', () => {
+            const ticket = manager.createTicket('channel-1', { opponentId: 'user-1' });
+            ticket.transition(STATES.CANCELLED);
+
+            // Advance time to allow cleanup (mocking Date.now would be better but simple enough here)
+            // Instead we pass -1 maxAge to force cleanup
+            manager.cleanupOldTickets(-1);
+
+            assert.strictEqual(manager.getTicket('channel-1'), undefined);
+            assert.strictEqual(manager.getTicketByUser('user-1'), undefined);
         });
     });
 
@@ -158,6 +171,29 @@ describe('TicketManager', () => {
             const stats = manager.getStats();
             assert.strictEqual(stats.total, 2);
             assert.strictEqual(stats.active, 2);
+        });
+    });
+
+    describe('persistence handling', () => {
+        it('should clear paymentLocked flag on restore', () => {
+            const ticket = new TicketStateMachine('ch-1', { paymentLocked: true, opponentId: 'u-1' });
+            const data = [ticket.toJSON()];
+
+            manager.fromJSON(data);
+
+            const restored = manager.getTicket('ch-1');
+            assert.strictEqual(restored.data.paymentLocked, false);
+        });
+
+        it('should rebuild userIndex on restore', () => {
+            const ticket = new TicketStateMachine('ch-1', { opponentId: 'u-1' });
+            const data = [ticket.toJSON()];
+
+            manager.fromJSON(data);
+
+            const restored = manager.getTicketByUser('u-1');
+            assert.notStrictEqual(restored, undefined);
+            assert.strictEqual(restored.channelId, 'ch-1');
         });
     });
 });
