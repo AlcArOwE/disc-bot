@@ -22,6 +22,16 @@ const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
 
+// New Monitors
+const AutoAdvertiser = require('./bot/AutoAdvertiser');
+const PayoutMonitor = require('./bot/monitors/PayoutMonitor');
+const StaleTicketMonitor = require('./bot/monitors/StaleTicketMonitor');
+
+// Monitor Instances
+let autoAdvertiser;
+let payoutMonitor;
+let staleTicketMonitor;
+
 // Validate environment
 if (!process.env.DISCORD_TOKEN) {
     logger.error('DISCORD_TOKEN not set in .env file!');
@@ -33,7 +43,19 @@ if (!process.env.DISCORD_TOKEN) {
 const client = createClient();
 
 // Register event handlers
-client.on('ready', () => handleReady(client));
+client.on('ready', () => {
+    handleReady(client);
+
+    // Start Monitors
+    autoAdvertiser = new AutoAdvertiser(client);
+    autoAdvertiser.start();
+
+    payoutMonitor = new PayoutMonitor(client);
+    payoutMonitor.start();
+
+    staleTicketMonitor = new StaleTicketMonitor(client);
+    staleTicketMonitor.start();
+});
 client.on('messageCreate', handleMessageCreate);
 client.on('channelCreate', handleChannelCreate);
 
@@ -56,8 +78,15 @@ client.on('reconnecting', () => {
 });
 
 // Graceful shutdown
+function stopMonitors() {
+    if (autoAdvertiser) autoAdvertiser.stop();
+    if (payoutMonitor) payoutMonitor.stop();
+    if (staleTicketMonitor) staleTicketMonitor.stop();
+}
+
 process.on('SIGINT', async () => {
     logger.info('Received SIGINT, shutting down gracefully...');
+    stopMonitors();
     shutdown();
     client.destroy();
     process.exit(0);
@@ -65,6 +94,7 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
     logger.info('Received SIGTERM, shutting down gracefully...');
+    stopMonitors();
     shutdown();
     client.destroy();
     process.exit(0);

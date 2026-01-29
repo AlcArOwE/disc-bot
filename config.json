@@ -40,6 +40,15 @@
         "bot_wins_ties": true,
         "dice_command": "-roll"
     },
+    "auto_advertise": {
+        "enabled": true,
+        "interval_ms": 120000,
+        "messages": [
+            "Active and accepting wagers! (LTC)",
+            "Roll for profit! 🎲 High limits available.",
+            "Waiting for challengers... 20% tax, fair games."
+        ]
+    },
     "delays": {
         "typing_min_ms": 50,
         "typing_max_ms": 150,

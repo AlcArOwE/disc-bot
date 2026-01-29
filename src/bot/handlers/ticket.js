@@ -356,13 +356,16 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
  * Handle game completion
  */
 async function handleGameComplete(channel, ticket, tracker) {
-    ticket.transition(STATES.GAME_COMPLETE, {
+    const didWin = tracker.didBotWin();
+
+    // Determine next state
+    const nextState = didWin ? STATES.AWAITING_PAYOUT : STATES.GAME_COMPLETE;
+
+    ticket.transition(nextState, {
         winner: tracker.winner,
         gameScores: tracker.scores
     });
     saveState();
-
-    const didWin = tracker.didBotWin();
 
     logGame('GAME_RESULT', {
         channelId: ticket.channelId,
@@ -384,14 +387,18 @@ async function handleGameComplete(channel, ticket, tracker) {
         // Post vouch after a delay
         await new Promise(r => setTimeout(r, 5000));
         await postVouch(channel.client, ticket);
+
+        // Don't remove ticket yet, wait for payout verification
     } else {
         await humanDelay();
         await channel.send('GG, well played!');
+
+        // Remove ticket since game is over and we lost (paid already)
+        ticketManager.removeTicket(ticket.channelId);
     }
 
-    // Clean up
+    // Clean up tracker
     gameTrackers.delete(ticket.channelId);
-    ticketManager.removeTicket(ticket.channelId);
 }
 
 /**
