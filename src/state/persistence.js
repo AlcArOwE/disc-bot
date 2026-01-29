@@ -3,6 +3,7 @@
  */
 
 const fs = require('fs');
+const fsPromises = require('fs/promises');
 const path = require('path');
 const { logger } = require('../utils/logger');
 const { ticketManager } = require('./TicketManager');
@@ -12,22 +13,55 @@ const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const SAVE_INTERVAL = 30 * 1000;
 let saveTimer = null;
 
+// Async save control flags
+let isSaving = false;
+let saveRequested = false;
+
 function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function saveState() {
+function saveStateSync() {
     try {
         ensureDataDir();
         const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
         const tmp = STATE_FILE + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
         fs.renameSync(tmp, STATE_FILE);
-        logger.debug('State saved', { count: state.tickets.length });
+        logger.debug('State saved (sync)', { count: state.tickets.length });
         return true;
     } catch (e) {
-        logger.error('Save failed', { error: e.message });
+        logger.error('Save failed (sync)', { error: e.message });
         return false;
+    }
+}
+
+async function saveState() {
+    if (isSaving) {
+        saveRequested = true;
+        return;
+    }
+
+    isSaving = true;
+
+    try {
+        do {
+            saveRequested = false;
+            ensureDataDir();
+            // Capture state synchronously at the start of the save
+            const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
+            const tmp = STATE_FILE + '.tmp';
+
+            // Perform I/O asynchronously
+            await fsPromises.writeFile(tmp, JSON.stringify(state, null, 2));
+            await fsPromises.rename(tmp, STATE_FILE);
+
+            logger.debug('State saved (async)', { count: state.tickets.length });
+        } while (saveRequested);
+    } catch (e) {
+        logger.error('Save failed (async)', { error: e.message });
+    } finally {
+        isSaving = false;
     }
 }
 
@@ -57,7 +91,11 @@ function startAutoSave() {
 
 function stopAutoSave() { if (saveTimer) { clearInterval(saveTimer); saveTimer = null; } }
 
-function shutdown() { stopAutoSave(); saveState(); logger.info('Persistence shutdown'); }
+function shutdown() {
+    stopAutoSave();
+    saveStateSync();
+    logger.info('Persistence shutdown');
+}
 
 function checkRecoveryNeeded() {
     const pending = ticketManager.getTicketsWithPendingPayments();
@@ -67,4 +105,4 @@ function checkRecoveryNeeded() {
     return pending;
 }
 
-module.exports = { saveState, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };
+module.exports = { saveState, saveStateSync, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };
