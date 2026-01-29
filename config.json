@@ -1,7 +1,7 @@
 {
     "betting_limits": {
         "min": 2,
-        "max": 50
+        "max": 35
     },
     "bet_cooldown_ms": 3500,
     "tax_percentage": 0.20,
