@@ -7,9 +7,10 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
+const { calculateOurBet } = require('../../utils/betting');
 const { logger, logGame } = require('../../utils/logger');
 const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
 const { logGameResult, logPayment } = require('../../utils/notifier');
@@ -51,6 +52,13 @@ async function handleMessage(message) {
             // Continuing allows them to trigger commands immediately.
             logger.info('Latched onto opponent', { channelId, userId: message.author.id });
         }
+    }
+
+    // 0 Bet Handling: If latched but bet is 0 (failed history scan), listen for bet here
+    if (ticket.data.opponentId === message.author.id && ticket.data.opponentBet === 0) {
+        await handleMissingBet(message, ticket);
+        // Continue to main logic in case they sent "10v10 address" combined (unlikely but possible)
+        // or just to let state machine run
     }
 
     // Route to appropriate handler based on state
@@ -112,17 +120,47 @@ async function handleLatchOpponent(message, ticket, isNew = false) {
     ticketManager.userIndex.set(userId, ticket);
     ticketManager.setCooldown(userId);
 
+    // Auto-detect bet from history
+    let autoBetFound = false;
+    try {
+        const messages = await message.channel.messages.fetch({ limit: 20 });
+        const userMsgs = messages.filter(m => m.author.id === userId);
+
+        for (const msg of userMsgs.values()) {
+            const betData = extractBetAmounts(msg.content);
+            if (betData) {
+                const opponentBet = betData.opponent;
+                const ourBet = parseFloat(calculateOurBet(opponentBet));
+
+                ticket.updateData({
+                    opponentBet,
+                    ourBet
+                });
+                autoBetFound = true;
+                logger.info('Auto-detected bet from history', { channelId: message.channel.id, opponentBet, ourBet });
+                break;
+            }
+        }
+    } catch (e) {
+        logger.warn('Failed to scan history for bets', { error: e.message });
+    }
+
     saveState();
 
     logger.info('Latched onto opponent in ticket channel', {
         channelId: message.channel.id,
-        userId
+        userId,
+        autoBetFound
     });
 
     // Notify
     if (isNew || !ticket.data.announcedLatch) {
         await humanDelay();
-        await message.reply('Ticket initialized. Please state your wager (e.g. "10v10").');
+        if (autoBetFound) {
+            await message.reply(`Ticket initialized with **$${ticket.data.opponentBet} vs $${ticket.data.ourBet}**. Waiting for middleman.`);
+        } else {
+            await message.reply('Ticket initialized. Please state your wager (e.g. "10v10").');
+        }
         ticket.updateData({ announcedLatch: true });
         saveState();
     }
@@ -543,6 +581,33 @@ async function postVouch(client, ticket) {
     } catch (error) {
         logger.error('Failed to post vouch', { error: error.message });
     }
+}
+
+/**
+ * Handle case where bet is 0 (we prompted user to state wager)
+ */
+async function handleMissingBet(message, ticket) {
+    const betData = extractBetAmounts(message.content);
+    if (!betData) return;
+
+    const opponentBet = betData.opponent;
+    const ourBet = parseFloat(calculateOurBet(opponentBet));
+
+    // Update ticket
+    ticket.updateData({
+        opponentBet,
+        ourBet
+    });
+    saveState();
+
+    logger.info('Bet detected from user response', {
+        channelId: message.channel.id,
+        opponentBet,
+        ourBet
+    });
+
+    await humanDelay();
+    await message.reply(`Bet updated: **$${opponentBet} vs $${ourBet}**. Waiting for middleman.`);
 }
 
 /**
