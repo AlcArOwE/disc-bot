@@ -3,7 +3,7 @@
         "min": 2,
         "max": 35
     },
-    "bet_cooldown_ms": 3500,
+    "bet_cooldown_ms": 2000,
     "tax_percentage": 0.20,
     "middleman_ids": [
         "1112921418930331819",
