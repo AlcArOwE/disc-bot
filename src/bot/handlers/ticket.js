@@ -290,16 +290,66 @@ async function handleGameInProgress(message, ticket) {
         return false;
     }
 
-    // Check if it's our turn to respond to a dice roll
-    // This depends on the specific dice bot being used
+    // Check dice bot security
+    if (config.game_settings.dice_bot_id && message.author.id !== config.game_settings.dice_bot_id && extractDiceResult(message)) {
+        logger.warn('Ignoring dice roll from non-authorized bot/user', {
+            authorId: message.author.id,
+            expectedBotId: config.game_settings.dice_bot_id
+        });
+        return false;
+    }
 
-    // Option 1: If opponent just rolled, we see their result and roll ours
-    const opponentRoll = extractDiceResult(message.content);
-    if (opponentRoll && message.author.id !== message.client.user.id) {
-        // Record their roll and do our roll
-        await gameActionDelay();
-        await rollDice(message.channel, ticket, opponentRoll, tracker);
-        return true;
+    // Process dice rolls
+    const diceResult = extractDiceResult(message);
+    if (diceResult) {
+        const botId = message.client.user.id;
+        const { value, targetId } = diceResult;
+        let playerType = null;
+
+        if (targetId === botId) {
+            playerType = 'bot';
+        } else if (targetId === ticket.data.opponentId) {
+            playerType = 'opponent';
+        } else if (!targetId) {
+             // If we can't identify who rolled, we ignore it to be safe.
+             logger.warn('Dice roll detected but could not identify player via mentions', {
+                 channelId: ticket.channelId,
+                 content: message.content
+             });
+             return false;
+        }
+
+        if (playerType) {
+            const result = tracker.recordRoll(playerType, value);
+
+            // If we just recorded an OPPONENT roll, and we haven't rolled yet (result is null),
+            // and we don't have a pending bot roll, we should roll!
+            if (playerType === 'opponent' && result === null && tracker.pendingRolls.bot === null) {
+                 await gameActionDelay();
+                 await rollDice(message.channel, ticket);
+            }
+
+            // If round completed
+            if (result) {
+                // Get roll values from the last round recorded
+                const lastRound = tracker.rounds[tracker.rounds.length - 1];
+
+                // Update ticket with current scores
+                ticket.updateData({ gameScores: tracker.scores });
+                saveState();
+
+                // Announce round result
+                const roundMsg = `${DiceEngine.formatResult(lastRound.botRoll)} vs ${DiceEngine.formatResult(lastRound.opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
+                await humanDelay(roundMsg);
+                await message.channel.send(roundMsg);
+
+                // Check for game completion
+                if (result.gameOver) {
+                    await handleGameComplete(message.channel, ticket, tracker);
+                }
+            }
+            return true;
+        }
     }
 
     // Option 2: If middleman asks us to roll
@@ -307,7 +357,7 @@ async function handleGameInProgress(message, ticket) {
         const content = message.content.toLowerCase();
         if (content.includes('roll') || content.includes('dice') || content.includes('your turn')) {
             await gameActionDelay();
-            await rollDice(message.channel, ticket, null, tracker);
+            await rollDice(message.channel, ticket);
             return true;
         }
     }
@@ -316,40 +366,12 @@ async function handleGameInProgress(message, ticket) {
 }
 
 /**
- * Roll dice and handle result
+ * Send dice roll command
  */
-async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
-    if (!tracker) {
-        tracker = gameTrackers.get(ticket.channelId);
-    }
-
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
-
+async function rollDice(channel, ticket) {
     // Send dice command/result
     const diceCmd = config.game_settings.dice_command;
     await channel.send(diceCmd);
-
-    // If we have opponent's roll, record the round
-    if (opponentRoll !== null && tracker) {
-        await humanDelay();
-
-        const result = tracker.recordRound(botRoll, opponentRoll);
-
-        // Update ticket with current scores
-        ticket.updateData({ gameScores: tracker.scores });
-        saveState();
-
-        // Announce round result
-        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
-        await humanDelay(roundMsg);
-        await channel.send(roundMsg);
-
-        // Check for game completion
-        if (result.gameOver) {
-            await handleGameComplete(channel, ticket, tracker);
-        }
-    }
 }
 
 /**

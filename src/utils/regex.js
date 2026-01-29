@@ -106,13 +106,30 @@ function extractGameStart(message) {
 
 /**
  * Extract dice result from message
- * @param {string} message - Message to parse
- * @returns {number | null}
+ * @param {string|object} messageOrContent - Message string or Discord Message object
+ * @returns {{value: number, targetId: string|null} | null}
  */
-function extractDiceResult(message) {
-    const match = message.match(DICE_RESULT_PATTERN);
+function extractDiceResult(messageOrContent) {
+    let content = messageOrContent;
+    let message = null;
+
+    if (typeof messageOrContent === 'object' && messageOrContent !== null && messageOrContent.content) {
+        content = messageOrContent.content;
+        message = messageOrContent;
+    }
+
+    const match = content.match(DICE_RESULT_PATTERN);
     if (!match) return null;
-    return parseInt(match[1], 10);
+
+    const value = parseInt(match[1], 10);
+    let targetId = null;
+
+    // Check mentions if available
+    if (message && message.mentions && message.mentions.users && message.mentions.users.size > 0) {
+        targetId = message.mentions.users.first().id;
+    }
+
+    return { value, targetId };
 }
 
 /**

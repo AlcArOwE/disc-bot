@@ -20,10 +20,46 @@ class ScoreTracker {
             opponent: 0
         };
 
+        this.pendingRolls = {
+            bot: null,
+            opponent: null
+        };
+
         this.rounds = [];
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
+    }
+
+    /**
+     * Record a single roll and check if round is complete
+     * @param {'bot'|'opponent'} playerType
+     * @param {number} rollValue
+     * @returns {object|null} Round result if complete, null otherwise
+     */
+    recordRoll(playerType, rollValue) {
+        if (!['bot', 'opponent'].includes(playerType)) {
+            logger.error(`Invalid player type: ${playerType}`);
+            return null;
+        }
+
+        this.pendingRolls[playerType] = rollValue;
+        logger.debug(`Recorded roll for ${playerType}: ${rollValue}`, {
+            ticketId: this.ticketId,
+            pending: this.pendingRolls
+        });
+
+        // Check if both sides have rolled
+        if (this.pendingRolls.bot !== null && this.pendingRolls.opponent !== null) {
+            const result = this.recordRound(this.pendingRolls.bot, this.pendingRolls.opponent);
+
+            // Clear pending rolls for next round
+            this.pendingRolls = { bot: null, opponent: null };
+
+            return result;
+        }
+
+        return null;
     }
 
     /**
@@ -176,6 +212,7 @@ class ScoreTracker {
             winsNeeded: this.winsNeeded,
             botWinsTies: this.botWinsTies,
             scores: this.scores,
+            pendingRolls: this.pendingRolls,
             rounds: this.rounds,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
@@ -192,6 +229,7 @@ class ScoreTracker {
         const tracker = new ScoreTracker(json.ticketId, json.winsNeeded);
         tracker.botWinsTies = json.botWinsTies;
         tracker.scores = json.scores;
+        tracker.pendingRolls = json.pendingRolls || { bot: null, opponent: null };
         tracker.rounds = json.rounds;
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
