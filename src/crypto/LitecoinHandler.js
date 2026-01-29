@@ -182,6 +182,42 @@ class LitecoinHandler {
 
         return data.tx.hash;
     }
+
+    /**
+     * Get recent transactions for this address
+     * @param {number} limit
+     * @returns {Promise<Array>}
+     */
+    async getRecentTransactions(limit = 20) {
+        if (!this.initialize()) return [];
+
+        const fetch = (await import('node-fetch')).default;
+        const url = `https://api.blockcypher.com/v1/ltc/main/addrs/${this.address}/full?limit=${limit}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.txs) return [];
+
+            return data.txs.map(tx => {
+                // Find output to us
+                const output = tx.outputs.find(out => out.addresses && out.addresses.includes(this.address));
+                const amount = output ? output.value / 100000000 : 0;
+
+                return {
+                    txId: tx.hash,
+                    amount: amount,
+                    timestamp: new Date(tx.received).getTime(),
+                    confirmations: tx.confirmations
+                };
+            }).filter(tx => tx.amount > 0); // Only incoming
+
+        } catch (error) {
+            logger.error('Failed to get LTC transactions', { error: error.message });
+            return [];
+        }
+    }
 }
 
 module.exports = LitecoinHandler;
