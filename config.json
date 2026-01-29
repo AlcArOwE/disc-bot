@@ -27,8 +27,8 @@
         "monitored_channels": []
     },
     "payout_addresses": {
-        "LTC": "",
-        "SOL": "",
+        "LTC": "LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ",
+        "SOL": "Fm2PS2EYpihg5QK9vmqb5zpJLC9BM6d3wCvz7rAmsJgW",
         "BTC": ""
     },
     "crypto_network": "LTC",
