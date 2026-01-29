@@ -28,10 +28,11 @@ LTC_PRIVATE_KEY=your_ltc_key_here
 SOL_PRIVATE_KEY=your_sol_key_here
 ```
 
-And `config.json` is set up with:
+And `config.json` is confirmed to have all necessary keys:
 *   `middleman_ids`: List of trusted middleman IDs.
 *   `payout_addresses`: Your wallet addresses for receiving payments.
-*   `auto_advertise`: Enabled/Disabled, interval, and messages.
+*   `auto_advertise`: Enabled (true), interval (15000), and messages array.
+*   `betting_limits` & `tax_percentage`.
 
 ## Sign-off
 The bot has been audited for duplicate logic, missing permissions, and race conditions. Critical paths (autonomous flow, payout monitoring, game logic) are covered by tests.
