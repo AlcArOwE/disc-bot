@@ -7,7 +7,7 @@ A sophisticated automated wagering self-bot for Discord with cryptocurrency paym
 ## Features
 
 - **🎯 Sniper Module**: Automatically detects bet offers in `XvX` format
-- **💰 Tax Calculation**: Calculates 15% edge (configurable) using precise BigNumber math
+- **💰 Tax Calculation**: Calculates configurable edge (default 18%) using precise BigNumber math
 - **🎰 State Machine**: Full ticket lifecycle management with 8 phases
 - **💳 Multi-Crypto Support**: LTC, SOL, and BTC payment handlers
 - **🎲 Dice Engine**: Cryptographically secure dice rolls with first-to-5 scoring
@@ -39,7 +39,12 @@ BTC_PRIVATE_KEY=your_btc_private_key_here
 
 ### 3. Configure Bot Settings
 
-Edit `config.json`:
+Copy the example config file:
+```bash
+copy config.example.json config.json
+```
+
+Edit `config.json` with your settings:
 
 ```json
 {
