@@ -7,6 +7,8 @@ const sniperHandler = require('../handlers/sniper');
 const ticketHandler = require('../handlers/ticket');
 const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
+const { STATES } = require('../../state/StateMachine');
+const { saveState } = require('../../state/persistence');
 
 /**
  * Handle incoming messages
@@ -45,6 +47,38 @@ async function handleMessageCreate(message) {
         const existingTicket = ticketManager.getTicket(message.channel.id);
         if (existingTicket) {
             // Handle ticket message
+            await ticketHandler.handleMessage(message);
+            return;
+        }
+
+        // Ticket Awareness: Check if this is a ticket channel we should be tracking
+        // (Even if we missed the channel create event)
+        const channelName = message.channel.name?.toLowerCase() || '';
+        const isTicketChannel =
+            channelName.includes('ticket') ||
+            channelName.includes('order') ||
+            channelName.includes('wager') ||
+            channelName.includes('bet');
+
+        if (isTicketChannel && !existingTicket) {
+            logger.info('🎫 Ticket detected from message (late detection)', {
+                channelId: message.channel.id,
+                channelName
+            });
+
+            // Create ticket and start tracking
+            // We assume awaiting middleman since the channel already exists
+            const ticket = ticketManager.createTicket(message.channel.id, {
+                opponentId: null,
+                opponentBet: 0,
+                ourBet: 0,
+                autoDetected: true
+            });
+
+            ticket.transition(STATES.AWAITING_MIDDLEMAN);
+            saveState();
+
+            // Process this message immediately as part of the ticket
             await ticketHandler.handleMessage(message);
             return;
         }

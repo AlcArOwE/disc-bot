@@ -110,6 +110,9 @@ async function handleAwaitingMiddleman(message, ticket) {
         ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: userId });
         saveState();
         logger.info('🟢 Middleman detected! Awaiting address...', { channelId: ticket.channelId, middlemanId: userId });
+
+        // Silence Fix: Acknowledge middleman in channel
+        await message.channel.send("Middleman detected. Please provide payment address.");
         return true;
     }
 
@@ -232,9 +235,25 @@ async function handlePaymentSent(message, ticket) {
     // Check for middleman confirmation
     if (message.author.id === ticket.data.middlemanId) {
         if (isPaymentConfirmation(message.content)) {
-            ticket.transition(STATES.AWAITING_GAME_START);
+            // Flow Fix: Auto-confirm and auto-roll
+            await message.channel.send("Confirm");
+
+            // Initialize score tracker for the game
+            const tracker = new ScoreTracker(ticket.channelId);
+            gameTrackers.set(ticket.channelId, tracker);
+
+            // Bot initiates the game (goes first)
+            const botGoesFirst = true;
+
+            ticket.transition(STATES.GAME_IN_PROGRESS, { botGoesFirst });
             saveState();
-            logger.info('Payment confirmed, awaiting game start', { channelId: ticket.channelId });
+
+            logger.info('Payment confirmed, auto-starting game', { channelId: ticket.channelId });
+
+            // Automatically initiate dice roll
+            await gameActionDelay();
+            await rollDice(message.channel, ticket);
+
             return true;
         }
     }

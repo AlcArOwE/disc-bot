@@ -16,66 +16,55 @@ function sleep(ms) {
 
 /**
  * Get a random delay within configured range
- * @param {number} min - Minimum delay in ms (default from config)
- * @param {number} max - Maximum delay in ms (default from config)
+ * Enforced strict 2.0s - 2.5s range for safety
+ * @param {number} min - Minimum delay in ms
+ * @param {number} max - Maximum delay in ms
  * @returns {number}
  */
-function getRandomDelay(min = config.delays.typing_min_ms, max = config.delays.typing_max_ms) {
+function getRandomDelay(min = 2000, max = 2500) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 /**
  * Calculate typing delay based on message length
- * Simulates realistic typing speed
+ * @deprecated Use strict 2.0-2.5s delay instead
  * @param {string} message - Message to "type"
  * @returns {number} - Delay in milliseconds
  */
 function getTypingDelay(message) {
-    const baseDelay = config.delays.response_base_ms;
-    const perCharDelay = config.delays.response_per_char_ms;
-    const messageLength = message.length;
-
-    // Add some randomness (±20%)
-    const calculatedDelay = baseDelay + (messageLength * perCharDelay);
-    const variance = calculatedDelay * 0.2;
-    const randomVariance = (Math.random() * variance * 2) - variance;
-
-    return Math.floor(calculatedDelay + randomVariance);
+    // Fallback to strict range even if called directly
+    return getRandomDelay(2000, 2500);
 }
 
 /**
  * Human-like delay before responding
- * Combines random delay with typing simulation
- * @param {string} message - Message that will be sent
+ * Strictly enforces 2.0s - 2.5s delay
+ * @param {string} message - Message that will be sent (unused for timing now)
  * @returns {Promise<void>}
  */
 async function humanDelay(message = '') {
-    // Maximum speed delay (100-300ms total)
-    const thinkDelay = getRandomDelay(100, 300);
-    await sleep(thinkDelay);
-
-    // Typing delay based on message length
-    if (message) {
-        const typingDelay = getTypingDelay(message);
-        await sleep(typingDelay);
-    }
+    // Strict safety window: 2000ms - 2500ms
+    const delay = getRandomDelay(2000, 2500);
+    await sleep(delay);
 }
 
 /**
  * Random short delay for quick actions
+ * Updated to safer limits
  * @returns {Promise<void>}
  */
 async function quickDelay() {
-    const delay = getRandomDelay(200, 500);
+    const delay = getRandomDelay(2000, 2500);
     await sleep(delay);
 }
 
 /**
  * Delay between game actions (dice rolls)
+ * Updated to safer limits
  * @returns {Promise<void>}
  */
 async function gameActionDelay() {
-    const delay = getRandomDelay(100, 300);
+    const delay = getRandomDelay(2000, 2500);
     await sleep(delay);
 }
 
