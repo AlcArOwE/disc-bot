@@ -88,10 +88,19 @@ async function handleMessage(message) {
     try {
         await message.reply(response);
 
+        // CRITICAL: Create a ticket to track this bet through the payment workflow
+        const ticketHandler = require('./ticket');
+        ticketHandler.createTicket(
+            message.channel.id,
+            userId,
+            parseFloat(opponentBetFormatted),
+            parseFloat(ourBetFormatted)
+        );
+
         // Set user cooldown to prevent spam
         ticketManager.setCooldown(userId);
 
-        logger.info('Bet sniped successfully', {
+        logger.info('Bet sniped successfully, ticket created', {
             channelId: message.channel.id,
             userId: userId,
             response
