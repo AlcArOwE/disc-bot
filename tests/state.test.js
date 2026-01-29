@@ -72,6 +72,22 @@ describe('TicketStateMachine', () => {
             assert.strictEqual(machine.isComplete(), true);
         });
 
+        it('should allow flow with AWAITING_PAYOUT', () => {
+            machine.transition(STATES.AWAITING_MIDDLEMAN);
+            machine.transition(STATES.AWAITING_PAYMENT_ADDRESS);
+            machine.transition(STATES.PAYMENT_SENT);
+            machine.transition(STATES.AWAITING_GAME_START);
+            machine.transition(STATES.GAME_IN_PROGRESS);
+
+            const toPayout = machine.transition(STATES.AWAITING_PAYOUT);
+            assert.strictEqual(toPayout, true, 'Should transition to AWAITING_PAYOUT');
+            assert.strictEqual(machine.isComplete(), false, 'AWAITING_PAYOUT should not be terminal');
+
+            const toComplete = machine.transition(STATES.GAME_COMPLETE);
+            assert.strictEqual(toComplete, true, 'Should transition to GAME_COMPLETE');
+            assert.strictEqual(machine.isComplete(), true, 'Should be complete now');
+        });
+
         it('should recognize CANCELLED as terminal', () => {
             machine.transition(STATES.CANCELLED);
             assert.strictEqual(machine.isComplete(), true);

@@ -8,6 +8,7 @@
  * - Sends cryptocurrency payments automatically
  * - Plays first-to-5 dice games
  * - Posts vouches on wins
+ * - Autonomously advertises and verifies payouts
  * 
  * WARNING: This is a self-bot which violates Discord TOS.
  * Use at your own risk.
@@ -22,6 +23,11 @@ const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
 
+// Autonomous Components
+const { autoAdvertiser } = require('./bot/AutoAdvertiser');
+const { payoutMonitor } = require('./bot/monitors/PayoutMonitor');
+const { staleTicketMonitor } = require('./bot/monitors/StaleTicketMonitor');
+
 // Validate environment
 if (!process.env.DISCORD_TOKEN) {
     logger.error('DISCORD_TOKEN not set in .env file!');
@@ -33,7 +39,16 @@ if (!process.env.DISCORD_TOKEN) {
 const client = createClient();
 
 // Register event handlers
-client.on('ready', () => handleReady(client));
+client.on('ready', () => {
+    handleReady(client);
+
+    // Start autonomous monitors
+    logger.info('Starting autonomous monitors...');
+    autoAdvertiser.start(client);
+    payoutMonitor.start(client);
+    staleTicketMonitor.start();
+});
+
 client.on('messageCreate', handleMessageCreate);
 client.on('channelCreate', handleChannelCreate);
 
@@ -56,24 +71,30 @@ client.on('reconnecting', () => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-    logger.info('Received SIGINT, shutting down gracefully...');
-    shutdown();
-    client.destroy();
-    process.exit(0);
-});
+async function gracefulShutdown(signal) {
+    logger.info(`Received ${signal}, shutting down gracefully...`);
 
-process.on('SIGTERM', async () => {
-    logger.info('Received SIGTERM, shutting down gracefully...');
+    // Stop monitors
+    autoAdvertiser.stop();
+    payoutMonitor.stop();
+    staleTicketMonitor.stop();
+
+    // Save state
     shutdown();
+
+    // Destroy client
     client.destroy();
+
     process.exit(0);
-});
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Uncaught exception handler
 process.on('uncaughtException', (error) => {
     logger.error('Uncaught exception', { error: error.message, stack: error.stack });
-    shutdown();
+    shutdown(); // Try to save state
     process.exit(1);
 });
 

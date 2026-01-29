@@ -99,11 +99,31 @@ async function getBalance() {
     }
 }
 
+/**
+ * Get recent transactions
+ * @param {number} limit
+ * @returns {Promise<Array<{txId: string, amount: number, sender: string, confirmations: number}>>}
+ */
+async function getRecentTransactions(limit = 10) {
+    try {
+        if (config.simulation_mode) {
+            // Return empty in simulation for now, or mock if needed
+            return [];
+        }
+        const handler = getCurrentHandler();
+        return await handler.getRecentTransactions(limit);
+    } catch (error) {
+        logger.error('Error getting recent transactions', { error: error.message });
+        return [];
+    }
+}
+
 module.exports = {
     getHandler,
     getCurrentHandler,
     getPayoutAddress,
     sendPayment,
     validateAddress,
-    getBalance
+    getBalance,
+    getRecentTransactions
 };
