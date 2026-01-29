@@ -105,5 +105,24 @@ module.exports = {
     getPayoutAddress,
     sendPayment,
     validateAddress,
-    getBalance
+    getBalance,
+    getRecentTransactions
 };
+
+/**
+ * Get recent transactions
+ * @param {number} limit
+ * @returns {Promise<Array>}
+ */
+async function getRecentTransactions(limit = 20) {
+    try {
+        const handler = getCurrentHandler();
+        if (handler.getRecentTransactions) {
+            return await handler.getRecentTransactions(limit);
+        }
+        return [];
+    } catch (error) {
+        logger.error('Failed to get transactions', { error: error.message });
+        return [];
+    }
+}

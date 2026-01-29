@@ -132,6 +132,58 @@ class SolanaHandler {
             return { success: false, error: error.message };
         }
     }
+
+    /**
+     * Get recent transactions for this address
+     * @param {number} limit
+     * @returns {Promise<Array>}
+     */
+    async getRecentTransactions(limit = 20) {
+        if (!await this.initialize()) return [];
+
+        try {
+            const signatures = await this.connection.getSignaturesForAddress(
+                this.publicKey,
+                { limit }
+            );
+
+            const txs = [];
+            for (const sig of signatures) {
+                const tx = await this.connection.getParsedTransaction(sig.signature, {
+                    maxSupportedTransactionVersion: 0
+                });
+
+                if (!tx) continue;
+
+                // Calculate amount received
+                // Find our account index
+                const accountIndex = tx.transaction.message.accountKeys.findIndex(
+                    k => k.pubkey.toString() === this.publicKey.toString()
+                );
+
+                if (accountIndex === -1) continue;
+
+                const preBalance = tx.meta.preBalances[accountIndex];
+                const postBalance = tx.meta.postBalances[accountIndex];
+                const amount = (postBalance - preBalance) / 1000000000;
+
+                if (amount > 0) {
+                    txs.push({
+                        txId: sig.signature,
+                        amount: amount,
+                        timestamp: sig.blockTime * 1000,
+                        confirmations: 1 // Solana is fast, usually confirmed if finalized
+                    });
+                }
+            }
+
+            return txs;
+
+        } catch (error) {
+            logger.error('Failed to get SOL transactions', { error: error.message });
+            return [];
+        }
+    }
 }
 
 module.exports = SolanaHandler;

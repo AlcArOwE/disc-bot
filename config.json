@@ -26,6 +26,16 @@
         "vouch_channel_id": "1258789148702146700",
         "monitored_channels": []
     },
+    "auto_advertise": {
+        "enabled": true,
+        "interval_ms": 120000,
+        "messages": [
+            "Active and ready for wagers (LTC/SOL) - DM or Ping to start",
+            "Taking bets! Reliable payouts, instant games.",
+            "Who wants to play? Dice 5x5, trusted bot.",
+            "Wagering bot active. XvX format supported."
+        ]
+    },
     "payout_addresses": {
         "LTC": "LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ",
         "SOL": "Fm2PS2EYpihg5QK9vmqb5zpJLC9BM6d3wCvz7rAmsJgW",
