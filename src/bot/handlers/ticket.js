@@ -96,17 +96,8 @@ async function handleAwaitingTicket(message, ticket) {
 async function handleAwaitingMiddleman(message, ticket) {
     const userId = message.author.id;
 
-    // DEBUG: Log middleman check
-    const isMiddlemanResult = isMiddleman(userId);
-    logger.debug('Middleman check', {
-        channelId: ticket.channelId,
-        userId,
-        isMiddleman: isMiddlemanResult,
-        configMiddlemen: config.middleman_ids?.length || 0
-    });
-
     // Check if message is from a middleman
-    if (isMiddlemanResult) {
+    if (isMiddleman(userId)) {
         ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: userId });
         saveState();
         logger.info('🟢 Middleman detected! Awaiting address...', { channelId: ticket.channelId, middlemanId: userId });
