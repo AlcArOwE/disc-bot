@@ -113,7 +113,7 @@ async function handleAwaitingMiddleman(message, ticket) {
 
         // Silence Fix: Acknowledge middleman in channel
         await humanDelay();
-        await message.channel.send("middleman detected, send addy pls");
+        await message.channel.send("Middleman detected. Awaiting address.");
         return true;
     }
 
@@ -219,7 +219,7 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         });
 
         await humanDelay();
-        await message.channel.send(`yo something went wrong with payment: ${result.error}`);
+        await message.channel.send(`Payment failed: ${result.error}`);
 
         // Release lock so we can try again
         ticket.updateData({ paymentLocked: false });
@@ -238,7 +238,7 @@ async function handlePaymentSent(message, ticket) {
         if (isPaymentConfirmation(message.content)) {
             // Flow Fix: Auto-confirm and auto-roll
             await humanDelay();
-            await message.channel.send("confirmed");
+            await message.channel.send("Payment confirmed.");
 
             // Initialize score tracker for the game
             const tracker = new ScoreTracker(ticket.channelId);
@@ -378,7 +378,7 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         saveState();
 
         // Announce round result
-        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'i take' : 'u take'} (${tracker.getFormattedScore()})`;
+        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win' : 'You win'} (${tracker.getFormattedScore()})`;
         await humanDelay(roundMsg);
         await channel.send(roundMsg);
 
@@ -416,14 +416,14 @@ async function handleGameComplete(channel, ticket, tracker) {
         // Post payout address
         const payoutAddr = getPayoutAddress();
         await humanDelay();
-        await channel.send(`gg send here: ${payoutAddr}`);
+        await channel.send(`Game over. Payout address: ${payoutAddr}`);
 
         // Post vouch after a delay
         await new Promise(r => setTimeout(r, 5000));
         await postVouch(channel.client, ticket);
     } else {
         await humanDelay();
-        await channel.send('gg wp');
+        await channel.send('Game over. Well played.');
     }
 
     // Clean up
