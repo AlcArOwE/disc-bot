@@ -59,6 +59,14 @@ async function handleMessageCreate(message) {
         const sniped = await sniperHandler.handleMessage(message);
         if (sniped) {
             logger.debug('Bet sniped in channel', { channelId: message.channel.id });
+            return;
+        }
+
+        // Fallback: Check for manual ticket creation / Opponent Latching in ticket channels
+        // Only check if channel name suggests it's a ticket to avoid log noise
+        const channelName = message.channel.name?.toLowerCase() || '';
+        if (channelName.includes('ticket') || channelName.includes('wager')) {
+            await ticketHandler.handleMessage(message);
         }
 
     } catch (error) {

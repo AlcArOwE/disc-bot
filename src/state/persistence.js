@@ -3,6 +3,7 @@
  */
 
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { logger } = require('../utils/logger');
 const { ticketManager } = require('./TicketManager');
@@ -11,24 +12,62 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const SAVE_INTERVAL = 30 * 1000;
 let saveTimer = null;
+let isSaving = false;
+let savePending = false;
 
 function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function saveState() {
+/**
+ * Synchronous save for shutdown
+ */
+function saveStateSync() {
     try {
         ensureDataDir();
         const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
         const tmp = STATE_FILE + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
         fs.renameSync(tmp, STATE_FILE);
-        logger.debug('State saved', { count: state.tickets.length });
+        logger.info('State saved synchronously (shutdown)', { count: state.tickets.length });
         return true;
     } catch (e) {
-        logger.error('Save failed', { error: e.message });
+        logger.error('Sync save failed', { error: e.message });
         return false;
     }
+}
+
+/**
+ * Asynchronous save with coalescing
+ */
+async function saveState() {
+    if (isSaving) {
+        savePending = true;
+        return false;
+    }
+
+    isSaving = true;
+    savePending = false;
+
+    try {
+        ensureDataDir();
+        const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
+        const tmp = STATE_FILE + '.tmp';
+
+        await fsPromises.writeFile(tmp, JSON.stringify(state, null, 2));
+        await fsPromises.rename(tmp, STATE_FILE);
+
+        logger.debug('State saved asynchronously', { count: state.tickets.length });
+    } catch (e) {
+        logger.error('Async save failed', { error: e.message });
+    } finally {
+        isSaving = false;
+        if (savePending) {
+            // Trigger another save if one was requested while we were saving
+            setImmediate(saveState);
+        }
+    }
+    return true;
 }
 
 function loadState() {
@@ -57,7 +96,7 @@ function startAutoSave() {
 
 function stopAutoSave() { if (saveTimer) { clearInterval(saveTimer); saveTimer = null; } }
 
-function shutdown() { stopAutoSave(); saveState(); logger.info('Persistence shutdown'); }
+function shutdown() { stopAutoSave(); saveStateSync(); logger.info('Persistence shutdown'); }
 
 function checkRecoveryNeeded() {
     const pending = ticketManager.getTicketsWithPendingPayments();
@@ -67,4 +106,4 @@ function checkRecoveryNeeded() {
     return pending;
 }
 
-module.exports = { saveState, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };
+module.exports = { saveState, saveStateSync, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };
