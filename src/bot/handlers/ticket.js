@@ -507,13 +507,15 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
  * Handle game completion
  */
 async function handleGameComplete(channel, ticket, tracker) {
-    ticket.transition(STATES.GAME_COMPLETE, {
+    const didWin = tracker.didBotWin();
+    const nextState = didWin ? STATES.AWAITING_PAYOUT : STATES.GAME_COMPLETE;
+
+    ticket.transition(nextState, {
         winner: tracker.winner,
-        gameScores: tracker.scores
+        gameScores: tracker.scores,
+        gameEndedAt: Date.now()
     });
     saveState();
-
-    const didWin = tracker.didBotWin();
 
     logGame('GAME_RESULT', {
         channelId: ticket.channelId,
@@ -530,19 +532,20 @@ async function handleGameComplete(channel, ticket, tracker) {
         // Post payout address
         const payoutAddr = getPayoutAddress();
         await humanDelay();
+        await channelLock.acquire(ticket.channelId);
         await channel.send(`GG! Send payout to: ${payoutAddr}`);
 
-        // Post vouch after a delay
-        await new Promise(r => setTimeout(r, 5000));
-        await postVouch(channel.client, ticket);
+        // Note: We do NOT vouch here. PayoutMonitor will vouch when money is received.
+        // We keep the ticket active in manager so monitor can find it.
     } else {
         await humanDelay();
+        await channelLock.acquire(ticket.channelId);
         await channel.send('GG, well played!');
-    }
 
-    // Clean up
-    gameTrackers.delete(ticket.channelId);
-    ticketManager.removeTicket(ticket.channelId);
+        // Clean up immediately on loss
+        gameTrackers.delete(ticket.channelId);
+        ticketManager.removeTicket(ticket.channelId);
+    }
 }
 
 /**

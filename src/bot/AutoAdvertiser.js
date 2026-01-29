@@ -5,6 +5,7 @@
 const { logger } = require('../utils/logger');
 const config = require('../../config.json');
 const { channelLock } = require('../utils/ChannelLock');
+const { ticketManager } = require('../state/TicketManager');
 
 class AutoAdvertiser {
     constructor() {
@@ -54,6 +55,14 @@ class AutoAdvertiser {
      */
     async advertise() {
         if (!this.client || !this.isRunning) return;
+
+        // Smart Mode: Skip if too many active tickets
+        // (Don't advertise if we are busy)
+        const activeTickets = ticketManager.getActiveTickets().length;
+        if (activeTickets >= 3) {
+            logger.debug('Skipping advertisement (too many active tickets)', { activeTickets });
+            return;
+        }
 
         const settings = config.auto_advertise;
         const channels = config.channels.monitored_channels || [];

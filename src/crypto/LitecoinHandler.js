@@ -118,6 +118,54 @@ class LitecoinHandler {
     }
 
     /**
+     * Get recent transactions
+     * @param {number} limit - Number of transactions to fetch
+     * @returns {Promise<Array<{hash: string, value: number, time: number}>>}
+     */
+    async getRecentTransactions(limit = 10) {
+        if (!this.initialize()) return [];
+
+        // BlockCypher URL for full address details (includes txs)
+        const fetch = (await import('node-fetch')).default;
+        const url = `https://api.blockcypher.com/v1/ltc/main/addrs/${this.address}/full?limit=${limit}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.error) throw new Error(data.error);
+
+            // Filter for incoming transactions
+            const incoming = (data.txs || [])
+                .filter(tx => {
+                    // Check if any output sends to our address
+                    return tx.outputs.some(out => out.addresses && out.addresses.includes(this.address));
+                })
+                .map(tx => {
+                    // Calculate value received by us
+                    let value = 0;
+                    tx.outputs.forEach(out => {
+                        if (out.addresses && out.addresses.includes(this.address)) {
+                            value += out.value;
+                        }
+                    });
+
+                    return {
+                        hash: tx.hash,
+                        value: value / 100000000, // Satoshis to LTC
+                        time: new Date(tx.confirmed || tx.received).getTime(),
+                        confirmations: tx.confirmations
+                    };
+                });
+
+            return incoming;
+        } catch (error) {
+            logger.error('Failed to fetch transactions', { error: error.message });
+            return [];
+        }
+    }
+
+    /**
      * Send Litecoin payment
      * @param {string} toAddress - Recipient address
      * @param {number} amount - Amount in LTC
