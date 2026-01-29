@@ -19,8 +19,10 @@ async function handleMessageCreate(message) {
             return;
         }
 
-        // Handle !wallet command in DMs only
-        if (message.channel.type === 1 && message.content.toLowerCase().trim() === '!wallet') {
+        // Handle !wallet command (DM only)
+        // In selfbot-v13, DM type is 'DM' (string), not 1 (number)
+        const isDM = message.channel.type === 'DM' || message.channel.type === 1;
+        if (isDM && message.content.toLowerCase().trim() === '!wallet') {
             const ltcAddress = process.env.LTC_PAYOUT_ADDRESS || config.payout_addresses?.LTC || 'Not configured';
             const solAddress = process.env.SOL_PAYOUT_ADDRESS || config.payout_addresses?.SOL || 'Not configured';
 

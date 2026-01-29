@@ -28,6 +28,15 @@ async function handleMessage(message) {
     const channelId = message.channel.id;
     const ticket = ticketManager.getTicket(channelId);
 
+    // DEBUG: Log every message that goes through ticket handler
+    logger.debug('Ticket handler processing', {
+        channelId,
+        hasTicket: !!ticket,
+        state: ticket?.getState() || 'NO_TICKET',
+        authorId: message.author.id,
+        content: message.content.substring(0, 50)
+    });
+
     // If no ticket exists, check if this is a new ticket being created
     if (!ticket) {
         return handlePotentialNewTicket(message);
@@ -87,11 +96,20 @@ async function handleAwaitingTicket(message, ticket) {
 async function handleAwaitingMiddleman(message, ticket) {
     const userId = message.author.id;
 
+    // DEBUG: Log middleman check
+    const isMiddlemanResult = isMiddleman(userId);
+    logger.debug('Middleman check', {
+        channelId: ticket.channelId,
+        userId,
+        isMiddleman: isMiddlemanResult,
+        configMiddlemen: config.middleman_ids?.length || 0
+    });
+
     // Check if message is from a middleman
-    if (isMiddleman(userId)) {
+    if (isMiddlemanResult) {
         ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: userId });
         saveState();
-        logger.info('Middleman detected', { channelId: ticket.channelId, middlemanId: userId });
+        logger.info('🟢 Middleman detected! Awaiting address...', { channelId: ticket.channelId, middlemanId: userId });
         return true;
     }
 
