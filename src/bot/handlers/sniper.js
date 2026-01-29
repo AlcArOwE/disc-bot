@@ -74,6 +74,9 @@ async function handleMessage(message) {
         ourBet: ourBetFormatted
     });
 
+    // CRITICAL: Set cooldown IMMEDIATELY to prevent duplicate snipes during delay
+    ticketManager.setCooldown(userId);
+
     // Show typing indicator immediately
     try {
         await message.channel.sendTyping();
@@ -96,9 +99,6 @@ async function handleMessage(message) {
             parseFloat(opponentBetFormatted),
             parseFloat(ourBetFormatted)
         );
-
-        // Set user cooldown to prevent spam
-        ticketManager.setCooldown(userId);
 
         logger.info('Bet sniped successfully, ticket created', {
             channelId: message.channel.id,
