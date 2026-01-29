@@ -54,7 +54,7 @@ async function handleMessage(message) {
     }
 
     // Calculate our bet with tax
-    // My_Bet = Opponent_Bet + (Opponent_Bet * 0.15) = Opponent_Bet * 1.15
+    // My_Bet = Opponent_Bet + (Opponent_Bet * Tax_Rate)
     const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
     const ourBet = new BigNumber(opponentBet).times(taxMultiplier);
 

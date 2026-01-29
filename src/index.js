@@ -3,7 +3,7 @@
  * 
  * A sophisticated automated wagering bot that:
  * - Monitors Discord channels for bet offers (XvX format)
- * - Calculates 15% tax and responds to valid bets
+ * - Calculates tax (configured in config.json) and responds to valid bets
  * - Handles full ticket lifecycle with state machine
  * - Sends cryptocurrency payments automatically
  * - Plays first-to-5 dice games
