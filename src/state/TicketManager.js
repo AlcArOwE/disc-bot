@@ -10,6 +10,8 @@ class TicketManager {
     constructor() {
         this.tickets = new Map();
         this.cooldowns = new Map();
+        // Secondary index for O(1) user lookups
+        this.userIndex = new Map();
         // Cooldown duration: Use config or default to 1 second
         this.cooldownDuration = config.bet_cooldown_ms || 1000;
     }
@@ -21,7 +23,12 @@ class TicketManager {
         }
         const ticket = new TicketStateMachine(channelId, data);
         this.tickets.set(channelId, ticket);
-        if (data.opponentId) this.setCooldown(data.opponentId);
+
+        if (data.opponentId) {
+            this.userIndex.set(data.opponentId, ticket);
+            this.setCooldown(data.opponentId);
+        }
+
         logger.info('Created ticket', { channelId, data });
         return ticket;
     }
@@ -29,8 +36,13 @@ class TicketManager {
     getTicket(channelId) { return this.tickets.get(channelId); }
 
     getTicketByUser(userId) {
-        for (const t of this.tickets.values()) {
-            if (t.data.opponentId === userId && !t.isComplete()) return t;
+        const ticket = this.userIndex.get(userId);
+        if (ticket && !ticket.isComplete()) {
+            return ticket;
+        }
+        // Cleanup completed ticket from index if found
+        if (ticket && ticket.isComplete()) {
+            this.userIndex.delete(userId);
         }
         return undefined;
     }
@@ -40,10 +52,32 @@ class TicketManager {
     removeTicket(channelId) {
         const t = this.tickets.get(channelId);
         if (t) {
-            if (t.data.opponentId) this.clearCooldown(t.data.opponentId);
+            if (t.data.opponentId) {
+                this.clearCooldown(t.data.opponentId);
+                this.userIndex.delete(t.data.opponentId);
+            }
             this.tickets.delete(channelId);
             logger.info('Removed ticket', { channelId });
         }
+    }
+
+    updateOpponentId(channelId, newOpponentId) {
+        const ticket = this.tickets.get(channelId);
+        if (!ticket) return false;
+
+        // Remove old index if exists
+        if (ticket.data.opponentId) {
+            this.userIndex.delete(ticket.data.opponentId);
+        }
+
+        // Set new index
+        if (newOpponentId) {
+            this.userIndex.set(newOpponentId, ticket);
+            // Also update ticket data
+            ticket.updateData({ opponentId: newOpponentId });
+        }
+
+        return true;
     }
 
     setCooldown(userId) { this.cooldowns.set(userId, Date.now()); }
@@ -68,7 +102,9 @@ class TicketManager {
     cleanupOldTickets(maxAgeMs = 24 * 60 * 60 * 1000) {
         const now = Date.now();
         for (const [id, t] of this.tickets.entries()) {
-            if (t.isComplete() && (now - t.updatedAt) > maxAgeMs) this.tickets.delete(id);
+            if (t.isComplete() && (now - t.updatedAt) > maxAgeMs) {
+                this.removeTicket(id); // Use removeTicket to clean up index too
+            }
         }
     }
 
@@ -76,10 +112,14 @@ class TicketManager {
 
     fromJSON(data) {
         this.tickets.clear();
+        this.userIndex.clear();
         for (const d of data) {
             const t = TicketStateMachine.fromJSON(d);
             this.tickets.set(t.channelId, t);
-            if (t.data.opponentId && !t.isComplete()) this.setCooldown(t.data.opponentId);
+            if (t.data.opponentId && !t.isComplete()) {
+                this.userIndex.set(t.data.opponentId, t);
+                this.setCooldown(t.data.opponentId);
+            }
         }
         logger.info(`Restored ${this.tickets.size} tickets`);
     }

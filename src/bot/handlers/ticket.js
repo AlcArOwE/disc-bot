@@ -7,7 +7,7 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
@@ -29,17 +29,23 @@ async function handleMessage(message) {
     const ticket = ticketManager.getTicket(channelId);
 
     // DEBUG: Log every message that goes through ticket handler
-    logger.debug('Ticket handler processing', {
-        channelId,
-        hasTicket: !!ticket,
-        state: ticket?.getState() || 'NO_TICKET',
-        authorId: message.author.id,
-        content: message.content.substring(0, 50)
-    });
+    if (logger.isLevelEnabled('debug')) {
+        logger.debug('Ticket handler processing', {
+            channelId,
+            hasTicket: !!ticket,
+            state: ticket?.getState() || 'NO_TICKET',
+            authorId: message.author.id,
+            content: message.content.substring(0, 50)
+        });
+    }
 
     // If no ticket exists, check if this is a new ticket being created
     if (!ticket) {
-        return handlePotentialNewTicket(message);
+        if (await handlePotentialNewTicket(message)) {
+            // Ticket created, re-process message to allow immediate latching
+            return handleMessage(message);
+        }
+        return false;
     }
 
     // Route to appropriate handler based on state
@@ -67,13 +73,18 @@ async function handleMessage(message) {
 async function handlePotentialNewTicket(message) {
     // Check if channel name looks like a ticket
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
-        return false;
-    }
+    if (channelName.includes('ticket')) {
+        // Create ticket with no opponent yet (waiting for latch)
+        // We assume amounts will be detected in AWAITING_TICKET phase
+        const ticket = ticketManager.createTicket(message.channel.id, {
+            opponentId: null,
+            opponentBet: 0,
+            ourBet: 0
+        });
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
+        logger.info('Ticket channel detected, initialized tracking', { channelId: message.channel.id });
+        return true;
+    }
     return false;
 }
 
@@ -81,12 +92,56 @@ async function handlePotentialNewTicket(message) {
  * Handle awaiting ticket state
  */
 async function handleAwaitingTicket(message, ticket) {
-    // Wait for opponent to join
-    if (message.author.id === ticket.data.opponentId) {
+    const userId = message.author.id;
+
+    // Ignore bots and known middlemen for latching
+    if (message.author.bot || isMiddleman(userId)) {
+        return false;
+    }
+
+    // Opponent Latching
+    if (!ticket.data.opponentId) {
+        ticketManager.updateOpponentId(ticket.channelId, userId);
+        logger.info('Latched onto opponent', { channelId: ticket.channelId, opponentId: userId });
+        saveState();
+    }
+
+    // Bet Amount Detection (if not already set)
+    if (!ticket.data.opponentBet) {
+        const betData = extractBetAmounts(message.content);
+        if (betData) {
+            const opponentBet = betData.opponent;
+
+            // Calculate our bet
+            const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
+            const ourBet = new BigNumber(opponentBet).times(taxMultiplier).toNumber(); // approximated for storage
+
+            ticket.updateData({
+                opponentBet: opponentBet,
+                ourBet: ourBet
+            });
+            saveState();
+
+            logger.info('Bet amounts detected in ticket', {
+                channelId: ticket.channelId,
+                opponentBet,
+                ourBet
+            });
+        }
+    }
+
+    // Wait for opponent confirmation (latch successful) and valid bet
+    if (ticket.data.opponentId === userId && ticket.data.opponentBet > 0) {
         ticket.transition(STATES.AWAITING_MIDDLEMAN);
         saveState();
-        logger.info('Opponent joined ticket', { channelId: ticket.channelId });
+
+        logger.info('Opponent confirmed and bet set, waiting for middleman', { channelId: ticket.channelId });
+
+        // Announce status
+        await humanDelay();
+        await message.channel.send(`Ticket initialized. Waiting for middleman... (Bet: ${ticket.data.opponentBet} vs ${ticket.data.ourBet.toFixed(2)})`);
     }
+
     return true;
 }
 
@@ -98,12 +153,14 @@ async function handleAwaitingMiddleman(message, ticket) {
 
     // DEBUG: Log middleman check
     const isMiddlemanResult = isMiddleman(userId);
-    logger.debug('Middleman check', {
-        channelId: ticket.channelId,
-        userId,
-        isMiddleman: isMiddlemanResult,
-        configMiddlemen: config.middleman_ids?.length || 0
-    });
+    if (logger.isLevelEnabled('debug')) {
+        logger.debug('Middleman check', {
+            channelId: ticket.channelId,
+            userId,
+            isMiddleman: isMiddlemanResult,
+            configMiddlemen: config.middleman_ids?.length || 0
+        });
+    }
 
     // Check if message is from a middleman
     if (isMiddlemanResult) {
@@ -131,6 +188,7 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     if (!address) {
         // If message is decently long or contains "address", but we failed to parse, warn the user
         if (message.content.length > 20 || message.content.toLowerCase().includes('address')) {
+            await humanDelay();
             await message.reply(`⚠️ I couldn't find a valid ${network} address. Please paste ONLY the address or check format.`);
         }
         return false;
@@ -162,11 +220,18 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         return true;
     }
 
-    // Calculate payment amount (this would need USD to crypto conversion in production)
-    // For now, we're assuming amounts are already in crypto
+    // Calculate payment amount
     // Check if payment is already being processed (Lock)
     if (ticket.data.paymentLocked) {
         logger.warn('Payment already in progress (Locked)', { channelId: ticket.channelId });
+        return false;
+    }
+
+    // Safety guard for zero bet
+    if (!ticket.data.ourBet || ticket.data.ourBet <= 0) {
+        logger.error('Attempted payment with zero/invalid amount', { channelId: ticket.channelId, amount: ticket.data.ourBet });
+        await humanDelay();
+        await message.channel.send("⚠️ Error: Bet amount invalid. Cannot proceed with payment.");
         return false;
     }
 
@@ -323,32 +388,48 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         tracker = gameTrackers.get(ticket.channelId);
     }
 
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
+    // Check for pending bot roll first
+    let botRoll;
+    if (tracker.pendingBotRoll) {
+        botRoll = tracker.pendingBotRoll;
+    } else {
+        botRoll = DiceEngine.roll();
+    }
 
+    // If we are rolling first (no opponent roll yet), store it and wait
+    if (opponentRoll === null) {
+        tracker.pendingBotRoll = botRoll;
+        saveState();
+
+        // Send dice command
+        const diceCmd = config.game_settings.dice_command;
+        await channel.send(diceCmd);
+
+        logger.info('Rolled first, waiting for opponent', { channelId: ticket.channelId, botRoll });
+        return;
+    }
+
+    // If we have opponent's roll, we can proceed to record the round
     // Send dice command/result
     const diceCmd = config.game_settings.dice_command;
     await channel.send(diceCmd);
 
-    // If we have opponent's roll, record the round
-    if (opponentRoll !== null && tracker) {
-        await humanDelay();
+    await humanDelay();
 
-        const result = tracker.recordRound(botRoll, opponentRoll);
+    const result = tracker.recordRound(botRoll, opponentRoll);
 
-        // Update ticket with current scores
-        ticket.updateData({ gameScores: tracker.scores });
-        saveState();
+    // Update ticket with current scores
+    ticket.updateData({ gameScores: tracker.scores });
+    saveState();
 
-        // Announce round result
-        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
-        await humanDelay(roundMsg);
-        await channel.send(roundMsg);
+    // Announce round result
+    const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
+    await humanDelay(roundMsg);
+    await channel.send(roundMsg);
 
-        // Check for game completion
-        if (result.gameOver) {
-            await handleGameComplete(channel, ticket, tracker);
-        }
+    // Check for game completion
+    if (result.gameOver) {
+        await handleGameComplete(channel, ticket, tracker);
     }
 }
 
@@ -442,8 +523,8 @@ async function postVouch(client, ticket) {
 
 /**
  * Create a new ticket for a channel
- * Since the opponent already sent their bet message, we skip AWAITING_TICKET
- * and go directly to AWAITING_MIDDLEMAN state.
+ * NOTE: This is kept for backward compatibility or explicit calls,
+ * but most tickets start via channel detection now.
  */
 function createTicket(channelId, opponentId, opponentBet, ourBet) {
     const ticket = ticketManager.createTicket(channelId, {
@@ -452,12 +533,11 @@ function createTicket(channelId, opponentId, opponentBet, ourBet) {
         ourBet
     });
 
-    // CRITICAL: Opponent already sent bet, so skip AWAITING_TICKET state
-    // and go directly to waiting for middleman
+    // If we have full info, we can go to AWAITING_MIDDLEMAN
     ticket.transition(STATES.AWAITING_MIDDLEMAN);
     saveState();
 
-    logger.info('Ticket created and ready for middleman', { channelId, opponentId });
+    logger.info('Ticket created explicitly', { channelId, opponentId });
     return ticket;
 }
 
