@@ -7,8 +7,8 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
-const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
+const { isMiddleman, validatePaymentAddress, validateBetAmount } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
 const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
@@ -125,6 +125,38 @@ async function handleAwaitingMiddleman(message, ticket) {
         logger.info('Opponent identified (latched)', { channelId: ticket.channelId, opponentId: userId });
     }
 
+    // In-Ticket Bet Detection: Allow user to set/update bet amount inside the ticket
+    // This is crucial if the ticket was auto-created with 0 bet
+    const betData = extractBetAmounts(message.content);
+    if (betData && !message.author.bot) {
+        const validation = validateBetAmount(betData.opponent);
+
+        if (validation.valid) {
+            const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
+            const ourBet = new BigNumber(betData.opponent).times(taxMultiplier);
+
+            ticket.updateData({
+                opponentBet: betData.opponent,
+                ourBet: parseFloat(ourBet.toFixed(2))
+            });
+            saveState();
+
+            logger.info('Bet updated in ticket', {
+                channelId: ticket.channelId,
+                opponentBet: betData.opponent,
+                ourBet: ourBet.toFixed(2)
+            });
+
+            await humanDelay();
+            await message.channel.send(`Bet updated: $${betData.opponent} vs $${ourBet.toFixed(2)}. Waiting for middleman.`);
+            return true;
+        } else {
+            await humanDelay();
+            await message.channel.send(`Invalid bet amount: ${validation.reason}`);
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -156,6 +188,14 @@ async function handleAwaitingPaymentAddress(message, ticket) {
             reason: validation.reason,
             channelId: ticket.channelId
         });
+        return false;
+    }
+
+    // Safety: Check if we have a valid bet amount before paying
+    if (!ticket.data.ourBet || ticket.data.ourBet <= 0) {
+        logger.warn('Payment attempted with invalid bet amount', { channelId: ticket.channelId, bet: ticket.data.ourBet });
+        await humanDelay();
+        await message.channel.send("Error: Bet amount not set. Please state the wager (e.g., '10v10') before I can pay.");
         return false;
     }
 
