@@ -27,7 +27,7 @@
     "payout_addresses": {
         "LTC": "LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ",
         "SOL": "Fm2PS2EYpihg5QK9vmqb5zpJLC9BM6d3wCvz7rAmsJgW",
-        "BTC": "YOUR_BTC_PAYOUT_ADDRESS"
+        "BTC": ""
     },
     "crypto_network": "LTC",
     "proxy_url": "",
@@ -41,8 +41,8 @@
     "delays": {
         "typing_min_ms": 300,
         "typing_max_ms": 1000,
-        "response_base_ms": 500,
-        "response_per_char_ms": 20
+        "response_base_ms": 300,
+        "response_per_char_ms": 15
     },
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",

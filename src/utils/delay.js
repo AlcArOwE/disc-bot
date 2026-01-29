@@ -50,8 +50,8 @@ function getTypingDelay(message) {
  * @returns {Promise<void>}
  */
 async function humanDelay(message = '') {
-    // Initial "thinking" delay
-    const thinkDelay = getRandomDelay(300, 800);
+    // Initial "thinking" delay (reduced for faster response)
+    const thinkDelay = getRandomDelay(100, 300);
     await sleep(thinkDelay);
 
     // Typing delay based on message length
@@ -75,7 +75,7 @@ async function quickDelay() {
  * @returns {Promise<void>}
  */
 async function gameActionDelay() {
-    const delay = getRandomDelay(800, 2000);
+    const delay = getRandomDelay(400, 1000);
     await sleep(delay);
 }
 

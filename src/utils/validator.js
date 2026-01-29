@@ -79,8 +79,8 @@ function sanitizeForLog(input) {
  * @param {string} channelId - Channel ID to validate
  * @returns {boolean}
  */
-function isValidChannelId(channetId) {
-    return /^\d{17,19}$/.test(channetId);
+function isValidChannelId(channelId) {
+    return /^\d{17,19}$/.test(channelId);
 }
 
 /**
