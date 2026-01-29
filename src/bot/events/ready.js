@@ -6,6 +6,7 @@ const { logger } = require('../../utils/logger');
 const { loadState, startAutoSave, checkRecoveryNeeded } = require('../../state/persistence');
 const { ticketManager } = require('../../state/TicketManager');
 const { autoAdvertiser } = require('../AutoAdvertiser');
+const { staleTicketMonitor } = require('../monitors/StaleTicketMonitor');
 
 /**
  * Handle the ready event when bot connects
@@ -38,6 +39,9 @@ async function handleReady(client) {
 
     // Start auto-advertiser
     autoAdvertiser.start(client);
+
+    // Start stale ticket monitor
+    staleTicketMonitor.start(client);
 
     logger.info('✅ Bot is ready and monitoring for bets!');
 }

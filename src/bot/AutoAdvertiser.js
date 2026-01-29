@@ -4,6 +4,7 @@
 
 const { logger } = require('../utils/logger');
 const config = require('../../config.json');
+const { channelLock } = require('../utils/ChannelLock');
 
 class AutoAdvertiser {
     constructor() {
@@ -80,6 +81,8 @@ class AutoAdvertiser {
                     }
                 }
 
+                // Use lock to respect per-channel rate limits
+                await channelLock.acquire(channelId);
                 await channel.send(settings.message);
                 logger.info('Advertisement sent', { channelId });
 

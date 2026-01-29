@@ -10,6 +10,7 @@ const { saveState } = require('../../state/persistence');
 const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
+const { channelLock } = require('../../utils/ChannelLock');
 const { calculateOurBet } = require('../../utils/betting');
 const { logger, logGame } = require('../../utils/logger');
 const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
@@ -289,6 +290,8 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         // Notify in channel
         const confirmMsg = config.response_templates.payment_sent.replace('{txid}', result.txId);
         await humanDelay(confirmMsg);
+
+        await channelLock.acquire(ticket.channelId);
         await message.channel.send(confirmMsg);
 
         logGame('PAYMENT_SUCCESS', {
@@ -365,6 +368,7 @@ async function handleAwaitingGameStart(message, ticket) {
     // If we go first, roll dice
     if (botGoesFirst) {
         await gameActionDelay();
+        // rollDice handles locking internally
         await rollDice(message.channel, ticket);
     }
 
@@ -446,6 +450,8 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         // Announce our roll
         // We do NOT send the dice command to avoid confusion if we are the authority
         const rollMsg = `I rolled ${DiceEngine.formatResult(botRoll)}`;
+
+        await channelLock.acquire(ticket.channelId);
         await channel.send(rollMsg);
 
         logger.info('Bot rolled (pending)', { channelId: ticket.channelId, roll: botRoll });
@@ -475,6 +481,8 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
     // Announce round result
     const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
     await humanDelay(roundMsg);
+
+    await channelLock.acquire(ticket.channelId);
     await channel.send(roundMsg);
 
     logger.info('Round complete', {

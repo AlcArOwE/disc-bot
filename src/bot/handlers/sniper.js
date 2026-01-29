@@ -10,6 +10,7 @@ const { humanDelay } = require('../../utils/delay');
 const { logger } = require('../../utils/logger');
 const { ticketManager } = require('../../state/TicketManager');
 const { logSnipe } = require('../../utils/notifier');
+const { channelLock } = require('../../utils/ChannelLock');
 const { calculateOurBet } = require('../../utils/betting');
 
 /**
@@ -95,6 +96,7 @@ async function handleMessage(message) {
 
     // Send response
     try {
+        await channelLock.acquire(message.channel.id);
         await message.reply(response);
 
         // NOTE: We do NOT create a ticket here anymore.
