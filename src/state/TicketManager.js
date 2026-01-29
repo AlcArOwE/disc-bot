@@ -10,8 +10,8 @@ class TicketManager {
     constructor() {
         this.tickets = new Map();
         this.cooldowns = new Map();
-        // Cooldown duration: Use config or default to 10 seconds (was 5 mins!)
-        this.cooldownDuration = config.bet_cooldown_ms || 10000;
+        // Cooldown duration: Use config or default to 3.5 seconds
+        this.cooldownDuration = config.bet_cooldown_ms || 3500;
     }
 
     createTicket(channelId, data) {

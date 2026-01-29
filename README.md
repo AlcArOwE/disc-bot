@@ -54,6 +54,9 @@ The bot uses a **universal config**, so you ONLY need to set up your `.env` file
     - `WEBHOOK_URL`: For logs (Optional)
 
 3.  **That's it!** No other config needed.
+    -   Middlemen are **auto-loaded**.
+    -   Tax is **auto-set** to 20%.
+    -   Channels are **auto-configured**.
 
 ### 4. Run the Bot
 
