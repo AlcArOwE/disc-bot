@@ -55,16 +55,17 @@ async function handleMessageCreate(message) {
             return;
         }
 
-        // Check for bet offers (sniper)
+        // Priority 1: Check if this is a ticket operation (Latching or Game Move)
+        // We do this first so the Sniper doesn't intercept messages inside active tickets
+        const ticketProcessed = await ticketHandler.handleMessage(message);
+        if (ticketProcessed) return;
+
+        // Priority 2: Sniper (only if not handled by ticket logic)
         const sniped = await sniperHandler.handleMessage(message);
         if (sniped) {
             logger.debug('Bet sniped in channel', { channelId: message.channel.id });
             return;
         }
-
-        // Fallback: Check if this is a ticket channel that needs initialization (Latching)
-        // This handles cases where sniper didn't trigger (e.g. no bet amount yet)
-        await ticketHandler.handleMessage(message);
 
     } catch (error) {
         logger.error('Error handling message', {
