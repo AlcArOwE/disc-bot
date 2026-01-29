@@ -21,6 +21,9 @@ const handleMessageCreate = require('./bot/events/messageCreate');
 const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
+const { payoutMonitor } = require('./bot/monitors/PayoutMonitor');
+const { staleTicketMonitor } = require('./bot/monitors/StaleTicketMonitor');
+const { autoAdvertiser } = require('./bot/AutoAdvertiser');
 
 // Validate environment
 if (!process.env.DISCORD_TOKEN) {
@@ -58,6 +61,9 @@ client.on('reconnecting', () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
     logger.info('Received SIGINT, shutting down gracefully...');
+    payoutMonitor.stop();
+    staleTicketMonitor.stop();
+    autoAdvertiser.stop();
     shutdown();
     client.destroy();
     process.exit(0);
@@ -65,6 +71,9 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
     logger.info('Received SIGTERM, shutting down gracefully...');
+    payoutMonitor.stop();
+    staleTicketMonitor.stop();
+    autoAdvertiser.stop();
     shutdown();
     client.destroy();
     process.exit(0);

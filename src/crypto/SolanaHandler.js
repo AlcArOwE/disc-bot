@@ -132,6 +132,63 @@ class SolanaHandler {
             return { success: false, error: error.message };
         }
     }
+
+    /**
+     * Get recent transactions for the address
+     * @returns {Promise<Array>} - List of recent transactions
+     */
+    async getRecentTransactions() {
+        if (!await this.initialize()) {
+            return [];
+        }
+
+        try {
+            // Get recent signatures
+            const signatures = await this.connection.getSignaturesForAddress(this.publicKey, { limit: 20 });
+
+            if (signatures.length === 0) return [];
+
+            const transactions = [];
+            const sigsToFetch = signatures.map(s => s.signature);
+
+            // Get parsed transactions
+            const parsedTxs = await this.connection.getParsedTransactions(sigsToFetch, { maxSupportedTransactionVersion: 0 });
+
+            for (let i = 0; i < parsedTxs.length; i++) {
+                const tx = parsedTxs[i];
+                const signatureInfo = signatures[i];
+
+                if (!tx) continue;
+
+                // Calculate amount received by us
+                // We need to look at preBalances vs postBalances for our account
+                const accountIndex = tx.transaction.message.accountKeys.findIndex(
+                    k => k.pubkey.toString() === this.publicKey.toString()
+                );
+
+                if (accountIndex === -1) continue;
+
+                const preBalance = tx.meta.preBalances[accountIndex];
+                const postBalance = tx.meta.postBalances[accountIndex];
+                const amount = (postBalance - preBalance) / 1000000000; // SOL
+
+                // Only include if we received SOL
+                if (amount > 0) {
+                    transactions.push({
+                        txId: signatureInfo.signature,
+                        amount: amount,
+                        timestamp: signatureInfo.blockTime ? signatureInfo.blockTime * 1000 : Date.now(),
+                        confirmations: 1 // If it's in a block, it has at least 1
+                    });
+                }
+            }
+
+            return transactions;
+        } catch (error) {
+            logger.error('Failed to get recent SOL transactions', { error: error.message });
+            return [];
+        }
+    }
 }
 
 module.exports = SolanaHandler;

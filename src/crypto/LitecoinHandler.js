@@ -182,6 +182,49 @@ class LitecoinHandler {
 
         return data.tx.hash;
     }
+
+    /**
+     * Get recent transactions for the address
+     * @returns {Promise<Array>} - List of recent transactions
+     */
+    async getRecentTransactions() {
+        // Reuse UTXO fetch URL but get full address info which contains txrefs
+        const fetch = (await import('node-fetch')).default;
+        const url = `https://api.blockcypher.com/v1/ltc/main/addrs/${this.address}?limit=20`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            const transactions = [];
+
+            // Helper to parse txref
+            const parseTx = (tx) => ({
+                txId: tx.tx_hash,
+                amount: tx.value / 100000000, // Convert Satoshis to LTC
+                confirmations: tx.confirmations,
+                timestamp: tx.confirmed ? new Date(tx.confirmed).getTime() : Date.now(),
+                sender: null // BlockCypher doesn't easily give sender without extra calls
+            });
+
+            if (data.txrefs) {
+                transactions.push(...data.txrefs.map(parseTx));
+            }
+
+            if (data.unconfirmed_txrefs) {
+                transactions.push(...data.unconfirmed_txrefs.map(parseTx));
+            }
+
+            return transactions;
+        } catch (error) {
+            logger.error('Failed to get recent transactions', { error: error.message });
+            return [];
+        }
+    }
 }
 
 module.exports = LitecoinHandler;

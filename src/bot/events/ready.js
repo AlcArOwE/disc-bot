@@ -5,6 +5,9 @@
 const { logger } = require('../../utils/logger');
 const { loadState, startAutoSave, checkRecoveryNeeded } = require('../../state/persistence');
 const { ticketManager } = require('../../state/TicketManager');
+const { payoutMonitor } = require('../monitors/PayoutMonitor');
+const { staleTicketMonitor } = require('../monitors/StaleTicketMonitor');
+const { autoAdvertiser } = require('../AutoAdvertiser');
 
 /**
  * Handle the ready event when bot connects
@@ -30,6 +33,11 @@ async function handleReady(client) {
 
     // Start auto-save
     startAutoSave();
+
+    // Start monitors
+    payoutMonitor.start();
+    staleTicketMonitor.start();
+    autoAdvertiser.start(client);
 
     // Log stats
     const stats = ticketManager.getStats();
