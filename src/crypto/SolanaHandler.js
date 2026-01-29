@@ -112,13 +112,10 @@ class SolanaHandler {
                 // Iterate over preBalances and postBalances
                 const accountIndex = tx.transaction.message.accountKeys.findIndex(key => {
                     const keyStr = key.pubkey ? key.pubkey.toString() : key.toString();
-                    // DEBUG LOG
-                    console.log(`Checking key: ${keyStr} vs ${this.publicKey.toString()}`);
                     return keyStr === this.publicKey.toString();
                 });
 
                 if (accountIndex === -1) {
-                    console.log('Account index not found');
                     continue;
                 }
 
