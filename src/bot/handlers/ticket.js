@@ -7,7 +7,8 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
+const { calculateOurBet } = require('./sniper');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
@@ -67,14 +68,30 @@ async function handleMessage(message) {
 async function handlePotentialNewTicket(message) {
     // Check if channel name looks like a ticket
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    if (!channelName.includes('ticket') && !channelName.includes('wager')) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    // Check for bet pattern
+    const betData = extractBetAmounts(message.content);
+    if (!betData) {
+        // Log that we saw a ticket channel but no bet yet
+        logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
+        return false;
+    }
+
+    // Calculate our bet
+    const ourBet = calculateOurBet(betData.opponent);
+
+    logger.info('Creating new ticket from bet detection', {
+        channelId: message.channel.id,
+        opponent: message.author.id,
+        bet: betData.opponent
+    });
+
+    createTicket(message.channel.id, message.author.id, betData.opponent, parseFloat(ourBet));
+
+    return true;
 }
 
 /**
