@@ -3,24 +3,22 @@
         "min": 2,
         "max": 50
     },
+    "bet_cooldown_ms": 10000,
     "tax_percentage": 0.18,
-    "middleman_ids": [
-        "YOUR_MIDDLEMAN_ID_1",
-        "YOUR_MIDDLEMAN_ID_2"
-    ],
+    "middleman_ids": [],
     "channels": {
-        "vouch_channel_id": "YOUR_VOUCH_CHANNEL_ID",
+        "vouch_channel_id": "",
         "monitored_channels": []
     },
     "payout_addresses": {
-        "LTC": "YOUR_LTC_PAYOUT_ADDRESS",
-        "SOL": "YOUR_SOL_PAYOUT_ADDRESS",
-        "BTC": "YOUR_BTC_PAYOUT_ADDRESS"
+        "LTC": "",
+        "SOL": "",
+        "BTC": ""
     },
     "crypto_network": "LTC",
     "proxy_url": "",
-    "webhook_url": "YOUR_DISCORD_WEBHOOK_URL",
-    "simulation_mode": true,
+    "webhook_url": "",
+    "simulation_mode": false,
     "game_settings": {
         "wins_to_complete": 5,
         "bot_wins_ties": true,

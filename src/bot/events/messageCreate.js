@@ -21,8 +21,8 @@ async function handleMessageCreate(message) {
 
         // Handle !wallet command in DMs only
         if (message.channel.type === 1 && message.content.toLowerCase().trim() === '!wallet') {
-            const ltcAddress = config.payout_addresses?.LTC || 'Not configured';
-            const solAddress = config.payout_addresses?.SOL || 'Not configured';
+            const ltcAddress = process.env.LTC_PAYOUT_ADDRESS || config.payout_addresses?.LTC || 'Not configured';
+            const solAddress = process.env.SOL_PAYOUT_ADDRESS || config.payout_addresses?.SOL || 'Not configured';
 
             await message.reply(
                 `**💰 My Wallet Addresses:**\n\n` +

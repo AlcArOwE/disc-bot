@@ -1,8 +1,7 @@
 # Environment variables (NEVER commit this!)
 .env
 
-# User-specific config (NEVER commit this!)
-config.json
+
 
 # Dependencies
 node_modules/

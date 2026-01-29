@@ -34,7 +34,8 @@ function getCurrentHandler() {
  * Get payout address for network
  */
 function getPayoutAddress(network = config.crypto_network) {
-    return config.payout_addresses[network.toUpperCase()];
+    const envKey = `${network.toUpperCase()}_PAYOUT_ADDRESS`;
+    return process.env[envKey] || config.payout_addresses?.[network.toUpperCase()];
 }
 
 /**

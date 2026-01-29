@@ -376,7 +376,7 @@ async function handleGameComplete(channel, ticket, tracker) {
  * Post vouch to vouch channel
  */
 async function postVouch(client, ticket) {
-    const vouchChannelId = config.channels.vouch_channel_id;
+    const vouchChannelId = process.env.VOUCH_CHANNEL_ID || config.channels.vouch_channel_id;
 
     if (!vouchChannelId || vouchChannelId === 'YOUR_VOUCH_CHANNEL_ID') {
         logger.warn('Vouch channel not configured');

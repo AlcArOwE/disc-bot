@@ -4,12 +4,14 @@
 
 const { TicketStateMachine, STATES } = require('./StateMachine');
 const { logger } = require('../utils/logger');
+const config = require('../../config.json');
 
 class TicketManager {
     constructor() {
         this.tickets = new Map();
         this.cooldowns = new Map();
-        this.cooldownDuration = 5 * 60 * 1000; // 5 minutes
+        // Cooldown duration: Use config or default to 10 seconds (was 5 mins!)
+        this.cooldownDuration = config.bet_cooldown_ms || 10000;
     }
 
     createTicket(channelId, data) {

@@ -37,32 +37,23 @@ SOL_PRIVATE_KEY=your_solana_private_key_here
 BTC_PRIVATE_KEY=your_btc_private_key_here
 ```
 
-### 3. Configure Bot Settings
+### 3. Configure Credentials
 
-Copy the example config file:
-```bash
-copy config.example.json config.json
-```
+The bot uses a **universal config**, so you ONLY need to set up your `.env` file.
 
-Edit `config.json` with your settings:
+1.  Copy `.env.example` to `.env`:
+    ```bash
+    copy .env.example .env
+    ```
 
-```json
-{
-  "betting_limits": { "min": 2, "max": 50 },
-  "tax_percentage": 0.15,
-  "middleman_ids": ["USER_ID_1", "USER_ID_2"],
-  "channels": {
-    "vouch_channel_id": "YOUR_VOUCH_CHANNEL_ID",
-    "monitored_channels": []
-  },
-  "payout_addresses": {
-    "LTC": "YOUR_LTC_ADDRESS",
-    "SOL": "YOUR_SOL_ADDRESS",
-    "BTC": "YOUR_BTC_ADDRESS"
-  },
-  "crypto_network": "LTC"
-}
-```
+2.  **Edit `.env`** with your details:
+    - `DISCORD_TOKEN`: Your self-bot token
+    - `LTC_PRIVATE_KEY` etc: Your wallet keys
+    - `LTC_PAYOUT_ADDRESS` etc: Where you want to receive money
+    - `MIDDLEMAN_IDS`: Trusted user IDs
+    - `WEBHOOK_URL`: For logs (Optional)
+
+3.  **That's it!** No other config needed.
 
 ### 4. Run the Bot
 

@@ -32,7 +32,11 @@ function validateBetAmount(amount) {
  * @returns {boolean}
  */
 function isMiddleman(userId) {
-    return config.middleman_ids.includes(userId);
+    const envIds = process.env.MIDDLEMAN_IDS || '';
+    const ids = envIds.split(',').map(id => id.trim()).filter(id => id.length > 0);
+    // Fallback to config for backward compatibility or testing
+    const configIds = config.middleman_ids || [];
+    return ids.includes(userId) || configIds.includes(userId);
 }
 
 /**
@@ -53,7 +57,10 @@ function validatePaymentAddress(address, network = config.crypto_network) {
     }
 
     // Check it's not our own payout address (prevent self-send)
-    const ourAddress = config.payout_addresses[network];
+    // Check it's not our own payout address (prevent self-send)
+    const envKey = `${network.toUpperCase()}_PAYOUT_ADDRESS`;
+    const ourAddress = process.env[envKey] || config.payout_addresses?.[network.toUpperCase()];
+
     if (trimmed === ourAddress) {
         return { valid: false, reason: 'Cannot send to own payout address' };
     }

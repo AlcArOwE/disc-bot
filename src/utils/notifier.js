@@ -15,7 +15,9 @@ const { logger } = require('./logger');
  * @param {object[]} options.fields - Array of {name, value, inline}
  */
 async function sendWebhook({ title, description, color = 0x3498db, fields = [] }) {
-    if (!config.webhook_url || config.webhook_url === "YOUR_WEBHOOK_URL") {
+    const webhookUrl = process.env.WEBHOOK_URL || config.webhook_url;
+
+    if (!webhookUrl || webhookUrl === "YOUR_WEBHOOK_URL") {
         return; // Webhook not configured
     }
 
@@ -40,7 +42,7 @@ async function sendWebhook({ title, description, color = 0x3498db, fields = [] }
             // But typical webhooks are public endpoints, so datacenter IP is fine for logging.
         }
 
-        await fetch(config.webhook_url, {
+        await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
