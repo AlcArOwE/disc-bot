@@ -24,6 +24,7 @@ class ScoreTracker {
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
+        this.pendingBotRoll = null;
     }
 
     /**
@@ -62,6 +63,9 @@ class ScoreTracker {
         };
 
         this.rounds.push(round);
+
+        // Clear pending bot roll since round is complete
+        this.pendingBotRoll = null;
 
         // Check for game completion
         const gameOver = this.isGameComplete();
@@ -179,7 +183,8 @@ class ScoreTracker {
             rounds: this.rounds,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
-            winner: this.winner
+            winner: this.winner,
+            pendingBotRoll: this.pendingBotRoll
         };
     }
 
@@ -196,6 +201,7 @@ class ScoreTracker {
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
         tracker.winner = json.winner;
+        tracker.pendingBotRoll = json.pendingBotRoll;
         return tracker;
     }
 }

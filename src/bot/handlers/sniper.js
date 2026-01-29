@@ -91,16 +91,10 @@ async function handleMessage(message) {
     try {
         await message.reply(response);
 
-        // CRITICAL: Create a ticket to track this bet through the payment workflow
-        const ticketHandler = require('./ticket');
-        ticketHandler.createTicket(
-            message.channel.id,
-            userId,
-            parseFloat(opponentBetFormatted),
-            parseFloat(ourBetFormatted)
-        );
+        // DO NOT create ticket here.
+        // Ticket creation is handled by the ticket handler when a ticket channel is detected.
 
-        logger.info('Bet sniped successfully, ticket created', {
+        logger.info('Bet sniped successfully, waiting for ticket creation', {
             channelId: message.channel.id,
             userId: userId,
             response
