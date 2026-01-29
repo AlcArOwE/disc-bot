@@ -67,14 +67,38 @@ async function handleMessage(message) {
 async function handlePotentialNewTicket(message) {
     // Check if channel name looks like a ticket
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    if (!channelName.includes('ticket') && !channelName.includes('wager')) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    // Ignore bots and middlemen
+    if (message.author.bot || isMiddleman(message.author.id)) {
+        return false;
+    }
+
+    // Opponent Latching: The first user to speak is the opponent
+    logger.info('Initializing ticket via Opponent Latching', {
+        channelId: message.channel.id,
+        userId: message.author.id
+    });
+
+    // Create ticket with opponent latched
+    const ticket = ticketManager.createTicket(message.channel.id, {
+        opponentId: message.author.id,
+        // Bets will be set later if not caught by sniper
+    });
+
+    // Transition to AWAITING_MIDDLEMAN
+    ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    saveState();
+
+    try {
+        await message.channel.send(`Ticket initialized for <@${message.author.id}>. Waiting for middleman...`);
+    } catch (e) {
+        logger.error('Failed to send init message', { error: e.message });
+    }
+
+    return true;
 }
 
 /**
@@ -231,6 +255,33 @@ async function handleAwaitingPaymentAddress(message, ticket) {
 async function handlePaymentSent(message, ticket) {
     // Check for middleman confirmation
     if (message.author.id === ticket.data.middlemanId) {
+        const content = message.content.toLowerCase();
+
+        // Direct transition to game if command implies start
+        if (content.includes('start') || content.includes('roll') || content.includes('begin')) {
+            const gameStart = extractGameStart(message.content);
+            const botId = message.client.user.id;
+            // Default to bot first if regex fails but keyword is present, or check manual override
+            const botGoesFirst = gameStart ? (gameStart.userId === botId) : true;
+
+            const tracker = new ScoreTracker(ticket.channelId);
+            gameTrackers.set(ticket.channelId, tracker);
+
+            ticket.transition(STATES.GAME_IN_PROGRESS, { botGoesFirst });
+            saveState();
+
+            logger.info('Game started directly from payment confirmation', {
+                channelId: ticket.channelId,
+                botGoesFirst
+            });
+
+            if (botGoesFirst) {
+                await gameActionDelay();
+                await rollDice(message.channel, ticket);
+            }
+            return true;
+        }
+
         if (isPaymentConfirmation(message.content)) {
             ticket.transition(STATES.AWAITING_GAME_START);
             saveState();
