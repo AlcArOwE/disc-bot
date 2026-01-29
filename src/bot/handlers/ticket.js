@@ -117,6 +117,14 @@ async function handleAwaitingMiddleman(message, ticket) {
         return true;
     }
 
+    // Opponent Latching: If this is an auto-detected ticket (no opponentId)
+    // and a non-bot, non-middleman user speaks, assume they are the opponent.
+    if (!ticket.data.opponentId && !message.author.bot) {
+        ticket.updateData({ opponentId: userId });
+        saveState();
+        logger.info('Opponent identified (latched)', { channelId: ticket.channelId, opponentId: userId });
+    }
+
     return false;
 }
 

@@ -89,6 +89,13 @@ async function handleMessageCreate(message) {
             return;
         }
 
+        // CRITICAL: Prevent sniper from firing in ticket channels
+        // If we identified it as a ticket channel above but failed to create ticket for some reason,
+        // we definitely don't want to snipe inside it.
+        if (isTicketChannel) {
+            return;
+        }
+
         // Check for bet offers (sniper)
         const sniped = await sniperHandler.handleMessage(message);
         if (sniped) {
