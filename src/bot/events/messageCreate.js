@@ -59,7 +59,12 @@ async function handleMessageCreate(message) {
         const sniped = await sniperHandler.handleMessage(message);
         if (sniped) {
             logger.debug('Bet sniped in channel', { channelId: message.channel.id });
+            return;
         }
+
+        // Fallback: Check if this is a ticket channel that needs initialization (Latching)
+        // This handles cases where sniper didn't trigger (e.g. no bet amount yet)
+        await ticketHandler.handleMessage(message);
 
     } catch (error) {
         logger.error('Error handling message', {
@@ -76,8 +81,7 @@ async function handleMessageCreate(message) {
  * @returns {boolean}
  */
 function isDiceBot(userId) {
-    // Add known dice bot IDs here if needed
-    const diceBotIds = [];
+    const diceBotIds = config.dice_bot_ids || [];
     return diceBotIds.includes(userId);
 }
 

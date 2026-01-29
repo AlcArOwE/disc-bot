@@ -3,6 +3,7 @@
  */
 
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { logger } = require('../utils/logger');
 const { ticketManager } = require('./TicketManager');
@@ -12,21 +13,77 @@ const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const SAVE_INTERVAL = 30 * 1000;
 let saveTimer = null;
 
+// Concurrency control
+let isSaving = false;
+let saveQueued = false;
+
 function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function saveState() {
+/**
+ * Asynchronous state save with coalescing
+ * Prevents blocking the event loop
+ */
+async function saveState() {
+    // If already saving, mark that we need another save after this one
+    if (isSaving) {
+        saveQueued = true;
+        return;
+    }
+
+    isSaving = true;
+
     try {
         ensureDataDir();
-        const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
+        const state = {
+            savedAt: new Date().toISOString(),
+            tickets: ticketManager.toJSON()
+        };
+
+        const tmp = STATE_FILE + '.tmp';
+
+        // Write to temp file first (atomic write pattern)
+        await fsPromises.writeFile(tmp, JSON.stringify(state, null, 2));
+        await fsPromises.rename(tmp, STATE_FILE);
+
+        if (logger.isLevelEnabled('debug')) {
+            logger.debug('State saved async', { count: state.tickets.length });
+        }
+    } catch (e) {
+        logger.error('Async save failed', { error: e.message });
+    } finally {
+        isSaving = false;
+
+        // If a save was requested while we were saving, trigger it now
+        if (saveQueued) {
+            saveQueued = false;
+            // Use setImmediate to release stack before next save
+            setImmediate(() => saveState());
+        }
+    }
+}
+
+/**
+ * Synchronous save for shutdown
+ * Blocks event loop to ensure data is written
+ */
+function saveStateSync() {
+    try {
+        ensureDataDir();
+        const state = {
+            savedAt: new Date().toISOString(),
+            tickets: ticketManager.toJSON()
+        };
+
         const tmp = STATE_FILE + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
         fs.renameSync(tmp, STATE_FILE);
-        logger.debug('State saved', { count: state.tickets.length });
+
+        logger.info('State saved synchronously (shutdown)', { count: state.tickets.length });
         return true;
     } catch (e) {
-        logger.error('Save failed', { error: e.message });
+        logger.error('Sync save failed', { error: e.message });
         return false;
     }
 }
@@ -57,7 +114,11 @@ function startAutoSave() {
 
 function stopAutoSave() { if (saveTimer) { clearInterval(saveTimer); saveTimer = null; } }
 
-function shutdown() { stopAutoSave(); saveState(); logger.info('Persistence shutdown'); }
+function shutdown() {
+    stopAutoSave();
+    saveStateSync();
+    logger.info('Persistence shutdown');
+}
 
 function checkRecoveryNeeded() {
     const pending = ticketManager.getTicketsWithPendingPayments();
@@ -67,4 +128,12 @@ function checkRecoveryNeeded() {
     return pending;
 }
 
-module.exports = { saveState, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };
+module.exports = {
+    saveState,
+    saveStateSync,
+    loadState,
+    startAutoSave,
+    stopAutoSave,
+    shutdown,
+    checkRecoveryNeeded
+};

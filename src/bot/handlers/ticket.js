@@ -67,14 +67,31 @@ async function handleMessage(message) {
 async function handlePotentialNewTicket(message) {
     // Check if channel name looks like a ticket
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    if (!channelName.includes('ticket') && !channelName.includes('wager')) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    const userId = message.author.id;
+
+    // Ignore bots and middlemen from latching
+    if (message.author.bot || isMiddleman(userId)) {
+        return false;
+    }
+
+    // Latch onto this user as the opponent
+    logger.info('Latching onto opponent in ticket channel', {
+        channelId: message.channel.id,
+        userId
+    });
+
+    // Create ticket with 0 bet initially
+    createTicket(message.channel.id, userId, 0, 0);
+
+    // Notify
+    await humanDelay();
+    await message.reply('Ticket initialized. Please state your wager (e.g. "10v10").');
+
+    return true;
 }
 
 /**
@@ -284,30 +301,43 @@ async function handleAwaitingGameStart(message, ticket) {
  * Handle game in progress state
  */
 async function handleGameInProgress(message, ticket) {
-    const tracker = gameTrackers.get(ticket.channelId);
+    let tracker = gameTrackers.get(ticket.channelId);
+
+    // Restore tracker from state if missing (crash recovery)
+    if (!tracker && ticket.data.trackerState) {
+        try {
+            tracker = ScoreTracker.fromJSON(ticket.data.trackerState);
+            gameTrackers.set(ticket.channelId, tracker);
+            logger.info('Restored score tracker from state', { channelId: ticket.channelId });
+        } catch (e) {
+            logger.error('Failed to restore tracker', { error: e.message });
+        }
+    }
+
     if (!tracker) {
         logger.error('No tracker for game', { channelId: ticket.channelId });
         return false;
     }
 
-    // Check if it's our turn to respond to a dice roll
-    // This depends on the specific dice bot being used
-
-    // Option 1: If opponent just rolled, we see their result and roll ours
+    // Option 1: Opponent rolled (or dice bot for opponent)
+    // We assume any roll not from us is the opponent's,
+    // unless strictly filtered by isDiceBot + mention check (TODO)
     const opponentRoll = extractDiceResult(message.content);
     if (opponentRoll && message.author.id !== message.client.user.id) {
-        // Record their roll and do our roll
         await gameActionDelay();
         await rollDice(message.channel, ticket, opponentRoll, tracker);
         return true;
     }
 
-    // Option 2: If middleman asks us to roll
+    // Option 2: Middleman forces a roll (e.g. if we stalled)
     if (message.author.id === ticket.data.middlemanId) {
         const content = message.content.toLowerCase();
         if (content.includes('roll') || content.includes('dice') || content.includes('your turn')) {
-            await gameActionDelay();
-            await rollDice(message.channel, ticket, null, tracker);
+            // Only roll if we haven't already committed a roll
+            if (!tracker.pendingBotRoll) {
+                await gameActionDelay();
+                await rollDice(message.channel, ticket, null, tracker);
+            }
             return true;
         }
     }
@@ -320,35 +350,74 @@ async function handleGameInProgress(message, ticket) {
  */
 async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
     if (!tracker) {
-        tracker = gameTrackers.get(ticket.channelId);
+        tracker = gameTrackers.get(ticket.channelId) ||
+                  (ticket.data.trackerState ? ScoreTracker.fromJSON(ticket.data.trackerState) : null);
+        if (tracker) gameTrackers.set(ticket.channelId, tracker);
     }
 
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
+    if (!tracker) return;
 
-    // Send dice command/result
-    const diceCmd = config.game_settings.dice_command;
-    await channel.send(diceCmd);
+    // SCENARIO 1: We are initiating the roll (waiting for opponent)
+    if (opponentRoll === null) {
+        // Generate and store our roll
+        const botRoll = DiceEngine.roll();
+        tracker.pendingBotRoll = botRoll;
 
-    // If we have opponent's roll, record the round
-    if (opponentRoll !== null && tracker) {
-        await humanDelay();
+        // Persist state immediately
+        ticket.updateData({
+            trackerState: tracker.toJSON()
+        });
+        await saveState();
 
-        const result = tracker.recordRound(botRoll, opponentRoll);
+        // Announce our roll
+        // We do NOT send the dice command to avoid confusion if we are the authority
+        const rollMsg = `I rolled ${DiceEngine.formatResult(botRoll)}`;
+        await channel.send(rollMsg);
 
-        // Update ticket with current scores
-        ticket.updateData({ gameScores: tracker.scores });
-        saveState();
+        logger.info('Bot rolled (pending)', { channelId: ticket.channelId, roll: botRoll });
+        return;
+    }
 
-        // Announce round result
-        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
-        await humanDelay(roundMsg);
-        await channel.send(roundMsg);
+    // SCENARIO 2: We are responding to opponent's roll
+    let botRoll;
+    if (tracker.pendingBotRoll) {
+        // Use the committed roll
+        botRoll = tracker.pendingBotRoll;
+        tracker.pendingBotRoll = null; // Clear it
+    } else {
+        // We generate a new roll now (simultaneous or they went first)
+        botRoll = DiceEngine.roll();
+    }
 
-        // Check for game completion
-        if (result.gameOver) {
-            await handleGameComplete(channel, ticket, tracker);
-        }
+    const result = tracker.recordRound(botRoll, opponentRoll);
+
+    // Update ticket state with full tracker data
+    ticket.updateData({
+        gameScores: tracker.scores,
+        trackerState: tracker.toJSON()
+    });
+    await saveState();
+
+    // Announce round result
+    const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
+    await humanDelay(roundMsg);
+    await channel.send(roundMsg);
+
+    logger.info('Round complete', {
+        channelId: ticket.channelId,
+        botRoll,
+        opponentRoll,
+        winner: result.roundWinner
+    });
+
+    // Check for game completion
+    if (result.gameOver) {
+        await handleGameComplete(channel, ticket, tracker);
+    } else {
+        // Game continues - Immediately roll for next round to speed up play
+        await gameActionDelay();
+        // Recursive call to initiate next round (Scenario 1)
+        await rollDice(channel, ticket, null, tracker);
     }
 }
 
@@ -446,18 +515,35 @@ async function postVouch(client, ticket) {
  * and go directly to AWAITING_MIDDLEMAN state.
  */
 function createTicket(channelId, opponentId, opponentBet, ourBet) {
-    const ticket = ticketManager.createTicket(channelId, {
-        opponentId,
-        opponentBet,
-        ourBet
-    });
+    // Check if ticket exists (e.g. from latching) and update it
+    let ticket = ticketManager.getTicket(channelId);
 
-    // CRITICAL: Opponent already sent bet, so skip AWAITING_TICKET state
-    // and go directly to waiting for middleman
-    ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    if (ticket) {
+        // Update existing ticket data
+        ticket.updateData({
+            opponentId,
+            opponentBet,
+            ourBet
+        });
+        logger.info('Updated existing ticket with bet data', { channelId, opponentBet });
+    } else {
+        // Create new ticket
+        ticket = ticketManager.createTicket(channelId, {
+            opponentId,
+            opponentBet,
+            ourBet
+        });
+    }
+
+    // CRITICAL: Ensure we are in correct state
+    // If we were just created or latched (AWAITING_TICKET), move to AWAITING_MIDDLEMAN
+    if (ticket.getState() === STATES.AWAITING_TICKET) {
+        ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    }
+
     saveState();
 
-    logger.info('Ticket created and ready for middleman', { channelId, opponentId });
+    logger.info('Ticket ready for middleman', { channelId, opponentId });
     return ticket;
 }
 
