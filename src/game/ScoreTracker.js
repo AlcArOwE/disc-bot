@@ -21,9 +21,26 @@ class ScoreTracker {
         };
 
         this.rounds = [];
+        this.currentTurn = 'bot'; // Default to bot starts (overridden on init if needed)
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
+    }
+
+    /**
+     * Set who goes first
+     * @param {boolean} botGoesFirst
+     */
+    setFirstTurn(botGoesFirst) {
+        this.currentTurn = botGoesFirst ? 'bot' : 'opponent';
+    }
+
+    /**
+     * Check if it is the bot's turn to roll
+     * @returns {boolean}
+     */
+    canBotRoll() {
+        return !this.isGameComplete() && this.currentTurn === 'bot';
     }
 
     /**
@@ -62,6 +79,18 @@ class ScoreTracker {
         };
 
         this.rounds.push(round);
+
+        // Advance turn logic:
+        // Winner of previous round usually goes first in next round in many dice games,
+        // or it alternates. For simplicity and fairness in this automated system,
+        // we'll stick to: winner of the round goes first.
+        // If tie, turn stays with whoever went first.
+        if (roundWinner === 'bot') {
+            this.currentTurn = 'bot';
+        } else if (roundWinner === 'opponent') {
+            this.currentTurn = 'opponent';
+        }
+        // On tie, currentTurn doesn't change
 
         // Check for game completion
         const gameOver = this.isGameComplete();
@@ -177,6 +206,7 @@ class ScoreTracker {
             botWinsTies: this.botWinsTies,
             scores: this.scores,
             rounds: this.rounds,
+            currentTurn: this.currentTurn,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
             winner: this.winner
@@ -193,6 +223,7 @@ class ScoreTracker {
         tracker.botWinsTies = json.botWinsTies;
         tracker.scores = json.scores;
         tracker.rounds = json.rounds;
+        tracker.currentTurn = json.currentTurn || 'bot';
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
         tracker.winner = json.winner;

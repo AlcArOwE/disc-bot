@@ -3,7 +3,8 @@
  */
 
 // Bet pattern: matches "10v10", "10vs10", "15.5 vs 15.5", "$10 v $10"
-const BET_PATTERN = /\$?(\d+(?:\.\d{1,2})?)\s*(?:v|vs)\s*\$?(\d+(?:\.\d{1,2})?)/i;
+// Improved to handle surrounding text and punctuation
+const BET_PATTERN = /(?:^|\s)\$?(\d+(?:\.\d{1,2})?)\s*(?:v|vs)\s*\$?(\d+(?:\.\d{1,2})?)(?=$|\s|[.,?!])/i;
 
 // Crypto address patterns
 const CRYPTO_PATTERNS = {

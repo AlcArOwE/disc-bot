@@ -25,39 +25,50 @@ const gameTrackers = new Map();
  * @returns {Promise<boolean>} - True if handled
  */
 async function handleMessage(message) {
-    const channelId = message.channel.id;
-    const ticket = ticketManager.getTicket(channelId);
+    try {
+        const channelId = message.channel.id;
+        const ticket = ticketManager.getTicket(channelId);
 
-    // DEBUG: Log every message that goes through ticket handler
-    logger.debug('Ticket handler processing', {
-        channelId,
-        hasTicket: !!ticket,
-        state: ticket?.getState() || 'NO_TICKET',
-        authorId: message.author.id,
-        content: message.content.substring(0, 50)
-    });
+        // DEBUG: Log every message that goes through ticket handler
+        logger.debug('Ticket handler processing', {
+            channelId,
+            hasTicket: !!ticket,
+            state: ticket?.getState() || 'NO_TICKET',
+            authorId: message.author.id,
+            content: message.content.substring(0, 50)
+        });
 
-    // If no ticket exists, check if this is a new ticket being created
-    if (!ticket) {
-        return handlePotentialNewTicket(message);
-    }
+        // If no ticket exists, check if this is a new ticket being created
+        if (!ticket) {
+            return handlePotentialNewTicket(message);
+        }
 
-    // Route to appropriate handler based on state
-    switch (ticket.getState()) {
-        case STATES.AWAITING_TICKET:
-            return handleAwaitingTicket(message, ticket);
-        case STATES.AWAITING_MIDDLEMAN:
-            return handleAwaitingMiddleman(message, ticket);
-        case STATES.AWAITING_PAYMENT_ADDRESS:
-            return handleAwaitingPaymentAddress(message, ticket);
-        case STATES.PAYMENT_SENT:
-            return handlePaymentSent(message, ticket);
-        case STATES.AWAITING_GAME_START:
-            return handleAwaitingGameStart(message, ticket);
-        case STATES.GAME_IN_PROGRESS:
-            return handleGameInProgress(message, ticket);
-        default:
-            return false;
+        // Route to appropriate handler based on state
+        switch (ticket.getState()) {
+            case STATES.AWAITING_TICKET:
+                return await handleAwaitingTicket(message, ticket);
+            case STATES.AWAITING_MIDDLEMAN:
+                return await handleAwaitingMiddleman(message, ticket);
+            case STATES.AWAITING_PAYMENT_ADDRESS:
+                return await handleAwaitingPaymentAddress(message, ticket);
+            case STATES.PAYMENT_SENT:
+                return await handlePaymentSent(message, ticket);
+            case STATES.AWAITING_GAME_START:
+                return await handleAwaitingGameStart(message, ticket);
+            case STATES.GAME_IN_PROGRESS:
+                return await handleGameInProgress(message, ticket);
+            default:
+                return false;
+        }
+    } catch (error) {
+        logger.error('Critical error in ticket handler', {
+            error: error.message,
+            stack: error.stack,
+            channelId: message.channel.id
+        });
+        // We don't want to crash the bot, so we swallow the error here
+        // but log it extensively.
+        return false;
     }
 }
 
@@ -377,16 +388,25 @@ async function handleGameInProgress(message, ticket) {
     // Option 1: If opponent just rolled, we see their result and roll ours
     const opponentRoll = extractDiceResult(message.content);
     if (opponentRoll && message.author.id !== message.client.user.id) {
+        // Validation: Is it actually the bot's turn?
+        if (!tracker.canBotRoll()) {
+            logger.debug('Skipping roll - not bot turn', { channelId: ticket.channelId });
+            return false;
+        }
+
         // Record their roll and do our roll
         await gameActionDelay();
         await rollDice(message.channel, ticket, opponentRoll, tracker);
         return true;
     }
 
-    // Option 2: If middleman asks us to roll
+    // Option 2: If middleman asks us to roll (override)
     if (message.author.id === ticket.data.middlemanId) {
         const content = message.content.toLowerCase();
         if (content.includes('roll') || content.includes('dice') || content.includes('your turn')) {
+            // Force turn to bot if middleman intervenes
+            tracker.setFirstTurn(true);
+
             await gameActionDelay();
             await rollDice(message.channel, ticket, null, tracker);
             return true;
