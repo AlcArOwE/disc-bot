@@ -417,13 +417,23 @@ async function postVouch(client, ticket) {
 
 /**
  * Create a new ticket for a channel
+ * Since the opponent already sent their bet message, we skip AWAITING_TICKET
+ * and go directly to AWAITING_MIDDLEMAN state.
  */
 function createTicket(channelId, opponentId, opponentBet, ourBet) {
-    return ticketManager.createTicket(channelId, {
+    const ticket = ticketManager.createTicket(channelId, {
         opponentId,
         opponentBet,
         ourBet
     });
+
+    // CRITICAL: Opponent already sent bet, so skip AWAITING_TICKET state
+    // and go directly to waiting for middleman
+    ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    saveState();
+
+    logger.info('Ticket created and ready for middleman', { channelId, opponentId });
+    return ticket;
 }
 
 module.exports = {
