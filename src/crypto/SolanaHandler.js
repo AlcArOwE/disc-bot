@@ -28,8 +28,8 @@ class SolanaHandler {
                 throw new Error('SOL_PRIVATE_KEY not set in environment');
             }
 
-            // Decode base58 private key
-            const secretKey = bs58.decode(privateKeyB58);
+            // Decode base58 private key (trim to avoid whitespace issues)
+            const secretKey = bs58.decode(privateKeyB58.trim());
             this.keypair = Keypair.fromSecretKey(secretKey);
             this.publicKey = this.keypair.publicKey;
 

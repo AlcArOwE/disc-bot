@@ -34,7 +34,8 @@ class BitcoinHandler {
                 throw new Error('BTC_PRIVATE_KEY not set in environment');
             }
 
-            this.keyPair = this.ecpair.fromWIF(privateKeyWIF, this.network);
+            // Parse WIF key (trim to avoid whitespace issues)
+            this.keyPair = this.ecpair.fromWIF(privateKeyWIF.trim(), this.network);
 
             // Generate address from public key
             const { address } = this.bitcoin.payments.p2pkh({

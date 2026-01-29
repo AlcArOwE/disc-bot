@@ -28,7 +28,8 @@ class LitecoinHandler {
                 throw new Error('LTC_PRIVATE_KEY not set in environment');
             }
 
-            this.privateKey = this.litecore.PrivateKey.fromWIF(privateKeyWIF);
+            // Parse WIF key (trim to avoid whitespace issues)
+            this.privateKey = this.litecore.PrivateKey.fromWIF(privateKeyWIF.trim());
             this.address = this.privateKey.toAddress(this.network).toString();
             this.initialized = true;
 
