@@ -12,22 +12,65 @@ const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const SAVE_INTERVAL = 30 * 1000;
 let saveTimer = null;
 
+// Async coalescing flags
+let isSaving = false;
+let savePending = false;
+
 function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function saveState() {
+/**
+ * Synchronous save for shutdown
+ */
+function saveStateSync() {
     try {
         ensureDataDir();
         const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
         const tmp = STATE_FILE + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
         fs.renameSync(tmp, STATE_FILE);
-        logger.debug('State saved', { count: state.tickets.length });
+        logger.debug('State saved (sync)', { count: state.tickets.length });
         return true;
     } catch (e) {
-        logger.error('Save failed', { error: e.message });
+        logger.error('Save failed (sync)', { error: e.message });
         return false;
+    }
+}
+
+/**
+ * Asynchronous save with request coalescing
+ */
+async function saveState() {
+    // If already saving, mark pending and return
+    if (isSaving) {
+        savePending = true;
+        return;
+    }
+
+    isSaving = true;
+
+    try {
+        ensureDataDir();
+        const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
+        const tmp = STATE_FILE + '.tmp';
+
+        await fs.promises.writeFile(tmp, JSON.stringify(state, null, 2));
+        await fs.promises.rename(tmp, STATE_FILE);
+
+        if (logger.isLevelEnabled('debug')) {
+             logger.debug('State saved (async)', { count: state.tickets.length });
+        }
+    } catch (e) {
+        logger.error('Save failed (async)', { error: e.message });
+    } finally {
+        isSaving = false;
+        // If a save was requested while we were saving, trigger it now
+        if (savePending) {
+            savePending = false;
+            // Use setImmediate to release stack before next save
+            setImmediate(() => saveState());
+        }
     }
 }
 
@@ -57,7 +100,11 @@ function startAutoSave() {
 
 function stopAutoSave() { if (saveTimer) { clearInterval(saveTimer); saveTimer = null; } }
 
-function shutdown() { stopAutoSave(); saveState(); logger.info('Persistence shutdown'); }
+function shutdown() {
+    stopAutoSave();
+    saveStateSync();
+    logger.info('Persistence shutdown');
+}
 
 function checkRecoveryNeeded() {
     const pending = ticketManager.getTicketsWithPendingPayments();
@@ -67,4 +114,4 @@ function checkRecoveryNeeded() {
     return pending;
 }
 
-module.exports = { saveState, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };
+module.exports = { saveState, saveStateSync, loadState, startAutoSave, stopAutoSave, shutdown, checkRecoveryNeeded };

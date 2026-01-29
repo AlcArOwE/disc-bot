@@ -22,6 +22,11 @@ async function handleMessage(message) {
         return false;
     }
 
+    // Don't snipe inside ticket channels - ticket handler manages these
+    if (message.channel.name && message.channel.name.toLowerCase().includes('ticket')) {
+        return false;
+    }
+
     // Extract bet amounts from message
     const betData = extractBetAmounts(message.content);
     if (!betData) {
@@ -91,16 +96,10 @@ async function handleMessage(message) {
     try {
         await message.reply(response);
 
-        // CRITICAL: Create a ticket to track this bet through the payment workflow
-        const ticketHandler = require('./ticket');
-        ticketHandler.createTicket(
-            message.channel.id,
-            userId,
-            parseFloat(opponentBetFormatted),
-            parseFloat(ourBetFormatted)
-        );
+        // We no longer create tickets here.
+        // Ticket creation is handled by the ticket handler when it detects a bet in a ticket channel.
 
-        logger.info('Bet sniped successfully, ticket created', {
+        logger.info('Bet sniped successfully', {
             channelId: message.channel.id,
             userId: userId,
             response
