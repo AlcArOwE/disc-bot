@@ -29,13 +29,15 @@ async function handleMessage(message) {
     const ticket = ticketManager.getTicket(channelId);
 
     // DEBUG: Log every message that goes through ticket handler
-    logger.debug('Ticket handler processing', {
-        channelId,
-        hasTicket: !!ticket,
-        state: ticket?.getState() || 'NO_TICKET',
-        authorId: message.author.id,
-        content: message.content.substring(0, 50)
-    });
+    if (logger.isLevelEnabled('debug')) {
+        logger.debug('Ticket handler processing', {
+            channelId,
+            hasTicket: !!ticket,
+            state: ticket?.getState() || 'NO_TICKET',
+            authorId: message.author.id,
+            content: message.content.substring(0, 50)
+        });
+    }
 
     // If no ticket exists, check if this is a new ticket being created
     if (!ticket) {
