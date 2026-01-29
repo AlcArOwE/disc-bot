@@ -134,6 +134,39 @@ describe('TicketManager', () => {
 
             assert.strictEqual(manager.getTicket('channel-1'), undefined);
         });
+
+        it('should update userIndex when registering opponent late', () => {
+            const ticket = manager.createTicket('channel-late', { opponentId: null });
+
+            // Should not be indexed yet
+            assert.strictEqual(manager.getTicketByUser('user-late'), undefined);
+
+            // Register
+            const success = manager.registerOpponent('channel-late', 'user-late');
+            assert.strictEqual(success, true);
+
+            // Should be indexed now
+            const found = manager.getTicketByUser('user-late');
+            assert.strictEqual(found, ticket);
+            assert.strictEqual(found.data.opponentId, 'user-late');
+
+            // Should be in cooldown
+            assert.strictEqual(manager.isOnCooldown('user-late'), true);
+        });
+
+        it('should prevent registering different opponent', () => {
+            manager.createTicket('channel-conflict', { opponentId: 'user-1' });
+            const success = manager.registerOpponent('channel-conflict', 'user-2');
+            assert.strictEqual(success, false);
+        });
+
+        it('should maintain userIndex consistency on removal', () => {
+            manager.createTicket('channel-remove', { opponentId: 'user-remove' });
+            assert.notStrictEqual(manager.getTicketByUser('user-remove'), undefined);
+
+            manager.removeTicket('channel-remove');
+            assert.strictEqual(manager.getTicketByUser('user-remove'), undefined);
+        });
     });
 
     describe('cooldowns', () => {
