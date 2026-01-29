@@ -71,23 +71,63 @@ async function handlePotentialNewTicket(message) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    logger.info('Detected new ticket channel, creating ticket tracking', { channelId: message.channel.id, name: channelName });
+
+    // Create a new ticket in AWAITING_TICKET state
+    // We don't know the opponent yet, so opponentId is null
+    const ticket = ticketManager.createTicket(message.channel.id, {
+        opponentId: null
+    });
+
+    saveState();
+
+    // Process the message immediately in case it's the opponent speaking
+    return handleAwaitingTicket(message, ticket);
 }
 
 /**
  * Handle awaiting ticket state
  */
 async function handleAwaitingTicket(message, ticket) {
-    // Wait for opponent to join
-    if (message.author.id === ticket.data.opponentId) {
+    const userId = message.author.id;
+
+    // If we already have an opponent, check if it's them
+    if (ticket.data.opponentId) {
+        if (userId === ticket.data.opponentId) {
+            ticket.transition(STATES.AWAITING_MIDDLEMAN);
+            saveState();
+            logger.info('Opponent confirmed in ticket', { channelId: ticket.channelId });
+            return true;
+        }
+        return false;
+    }
+
+    // Opponent Latching Logic:
+    // If opponentId is null, the first non-bot, non-middleman user is the opponent
+    const isBot = message.author.bot;
+    const isMM = isMiddleman(userId);
+
+    if (!isBot && !isMM) {
+        // Latched!
+        ticketManager.updateTicketOpponent(ticket.channelId, userId);
+
+        // Extract bet if present (optional but helpful)
+        const { extractBetAmounts } = require('../../utils/regex');
+        const betData = extractBetAmounts(message.content);
+        if (betData) {
+            // If they stated the bet, we can update it
+            // Assuming 1:1 for now or calculate tax
+            // For now, let's just latch the user.
+            // ticket.updateData({ opponentBet: betData.opponent });
+        }
+
         ticket.transition(STATES.AWAITING_MIDDLEMAN);
         saveState();
-        logger.info('Opponent joined ticket', { channelId: ticket.channelId });
+        logger.info('Opponent Latched', { channelId: ticket.channelId, userId });
+        return true;
     }
-    return true;
+
+    return false;
 }
 
 /**
@@ -171,6 +211,13 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     }
 
     const amount = ticket.data.ourBet;
+
+    // Safety guard: Prevent sending 0 or negative amounts
+    if (amount <= 0) {
+        logger.error('Attempted to send invalid amount', { channelId: ticket.channelId, amount });
+        await message.channel.send('⚠️ Safety Alert: Calculated bet amount is zero or invalid. Payment aborted.');
+        return false;
+    }
 
     // Lock payment to prevent race conditions
     ticket.updateData({ paymentLocked: true });
@@ -323,15 +370,44 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         tracker = gameTrackers.get(ticket.channelId);
     }
 
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
+    let botRoll;
+    let isReusingPending = false;
 
-    // Send dice command/result
-    const diceCmd = config.game_settings.dice_command;
-    await channel.send(diceCmd);
+    // Check if we have a pending roll
+    if (tracker.pendingBotRoll !== null) {
+        botRoll = tracker.pendingBotRoll;
+        tracker.pendingBotRoll = null; // Clear it
+        isReusingPending = true;
+    } else {
+        // Roll our dice
+        botRoll = DiceEngine.roll();
+    }
+
+    // If we are going first (no opponent roll yet)
+    if (opponentRoll === null) {
+        // Send dice command
+        const diceCmd = config.game_settings.dice_command;
+        await channel.send(diceCmd);
+
+        // Announce our roll so opponent knows what to beat
+        const rollMsg = `I rolled ${DiceEngine.formatResult(botRoll)}`;
+        await humanDelay(rollMsg);
+        await channel.send(rollMsg);
+
+        // Save pending
+        tracker.pendingBotRoll = botRoll;
+        saveState();
+        return;
+    }
 
     // If we have opponent's roll, record the round
     if (opponentRoll !== null && tracker) {
+        // If we are responding (not reusing pending), send dice command
+        if (!isReusingPending) {
+            const diceCmd = config.game_settings.dice_command;
+            await channel.send(diceCmd);
+        }
+
         await humanDelay();
 
         const result = tracker.recordRound(botRoll, opponentRoll);
