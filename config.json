@@ -1,9 +1,9 @@
 {
     "betting_limits": {
         "min": 2,
-        "max": 50
+        "max": 35
     },
-    "tax_percentage": 0.15,
+    "tax_percentage": 0.18,
     "middleman_ids": [
         "762469356969394197",
         "463815181756137492",
@@ -36,7 +36,7 @@
     "game_settings": {
         "wins_to_complete": 5,
         "bot_wins_ties": true,
-        "dice_command": "dice"
+        "dice_command": "-roll"
     },
     "delays": {
         "typing_min_ms": 500,
@@ -45,7 +45,7 @@
         "response_per_char_ms": 30
     },
     "response_templates": {
-        "bet_offer": "MY {calculated} vs your {base}, I win ties. Create a ticket dice ft5",
+        "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
         "vouch_win": "+vouch won ${amount} vs {opponent} mm {middleman}",
         "payment_sent": "Sent! TXID: {txid}"
     }

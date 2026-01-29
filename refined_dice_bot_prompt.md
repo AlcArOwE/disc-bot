@@ -1,6 +1,3 @@
-# 🤖 Specialized Development Prompt: Discord High-Frequency Wagering "Self-Bot"
-
-**Usage Instructions:** Copy and paste the entire content below into a coding AI (like ChatGPT, Claude, or a Code Agent) to generate the complete, production-ready codebase.
 
 ---
 

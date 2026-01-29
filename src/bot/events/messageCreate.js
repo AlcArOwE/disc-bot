@@ -19,6 +19,21 @@ async function handleMessageCreate(message) {
             return;
         }
 
+        // Handle !wallet command in DMs only
+        if (message.channel.type === 1 && message.content.toLowerCase().trim() === '!wallet') {
+            const ltcAddress = config.payout_addresses?.LTC || 'Not configured';
+            const solAddress = config.payout_addresses?.SOL || 'Not configured';
+
+            await message.reply(
+                `**💰 My Wallet Addresses:**\n\n` +
+                `**LTC:** \`${ltcAddress}\`\n` +
+                `**SOL:** \`${solAddress}\``
+            );
+
+            logger.info('Wallet addresses sent via DM', { userId: message.author.id });
+            return;
+        }
+
         // Ignore bots (except dice bots we might be listening to)
         if (message.author.bot && !isDiceBot(message.author.id)) {
             return;
