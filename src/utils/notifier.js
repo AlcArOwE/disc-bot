@@ -81,7 +81,7 @@ function logGameResult(channelId, winner, netProfit) {
         fields: [
             { name: "Channel", value: `<#${channelId}>`, inline: true },
             { name: "Result", value: isWin ? "WIN" : "LOSS", inline: true },
-            { name: "Net Profit", value: isWin ? `+$${netProfit}` : `-$${netProfit}`, inline: false }
+            { name: "Net Profit", value: `$${netProfit.toFixed(2)}`, inline: false }
         ]
     });
 }

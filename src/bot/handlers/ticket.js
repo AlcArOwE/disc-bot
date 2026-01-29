@@ -413,12 +413,19 @@ async function postVouch(client, ticket) {
         }
 
         const opponentId = ticket.data.opponentId;
-        const amount = ticket.data.opponentBet; // We won their bet amount
+        const middlemanId = ticket.data.middlemanId;
+        const amount = ticket.data.opponentBet || 0;
+
+        // Guard against missing data (can happen with auto-detected tickets)
+        if (!opponentId) {
+            logger.warn('Cannot post vouch: no opponent ID', { channelId: ticket.channelId });
+            return;
+        }
 
         const vouchMsg = config.response_templates.vouch_win
             .replace('{amount}', amount.toFixed(2))
             .replace('{opponent}', `<@${opponentId}>`)
-            .replace('{middleman}', `<@${ticket.data.middlemanId}>`);
+            .replace('{middleman}', middlemanId ? `<@${middlemanId}>` : 'MM');
 
         await humanDelay(vouchMsg);
         await vouchChannel.send(vouchMsg);

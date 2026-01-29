@@ -57,7 +57,6 @@ function validatePaymentAddress(address, network = config.crypto_network) {
     }
 
     // Check it's not our own payout address (prevent self-send)
-    // Check it's not our own payout address (prevent self-send)
     const envKey = `${network.toUpperCase()}_PAYOUT_ADDRESS`;
     const ourAddress = process.env[envKey] || config.payout_addresses?.[network.toUpperCase()];
 
