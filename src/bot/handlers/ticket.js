@@ -303,7 +303,19 @@ async function handleAwaitingGameStart(message, ticket) {
  * Handle game in progress state
  */
 async function handleGameInProgress(message, ticket) {
-    const tracker = gameTrackers.get(ticket.channelId);
+    let tracker = gameTrackers.get(ticket.channelId);
+
+    // Reliability Fix: Restore tracker from state if missing (e.g., after restart)
+    if (!tracker && ticket.data.trackerState) {
+        try {
+            tracker = ScoreTracker.fromJSON(ticket.data.trackerState);
+            gameTrackers.set(ticket.channelId, tracker);
+            logger.info('Restored game tracker from state', { channelId: ticket.channelId });
+        } catch (error) {
+            logger.error('Failed to restore tracker', { error: error.message });
+        }
+    }
+
     if (!tracker) {
         logger.error('No tracker for game', { channelId: ticket.channelId });
         return false;
@@ -355,8 +367,11 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
 
         const result = tracker.recordRound(botRoll, opponentRoll);
 
-        // Update ticket with current scores
-        ticket.updateData({ gameScores: tracker.scores });
+        // Update ticket with current scores and full tracker state for persistence
+        ticket.updateData({
+            gameScores: tracker.scores,
+            trackerState: tracker.toJSON()
+        });
         saveState();
 
         // Announce round result
