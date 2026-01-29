@@ -20,10 +20,34 @@ class ScoreTracker {
             opponent: 0
         };
 
+        this.pendingBotRoll = null; // Store bot's roll when waiting for opponent
         this.rounds = [];
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
+    }
+
+    /**
+     * Set pending bot roll
+     * @param {number} roll
+     */
+    setPendingBotRoll(roll) {
+        this.pendingBotRoll = roll;
+    }
+
+    /**
+     * Get pending bot roll
+     * @returns {number|null}
+     */
+    getPendingBotRoll() {
+        return this.pendingBotRoll;
+    }
+
+    /**
+     * Clear pending bot roll
+     */
+    clearPendingBotRoll() {
+        this.pendingBotRoll = null;
     }
 
     /**
@@ -176,6 +200,7 @@ class ScoreTracker {
             winsNeeded: this.winsNeeded,
             botWinsTies: this.botWinsTies,
             scores: this.scores,
+            pendingBotRoll: this.pendingBotRoll,
             rounds: this.rounds,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
@@ -192,6 +217,7 @@ class ScoreTracker {
         const tracker = new ScoreTracker(json.ticketId, json.winsNeeded);
         tracker.botWinsTies = json.botWinsTies;
         tracker.scores = json.scores;
+        tracker.pendingBotRoll = json.pendingBotRoll || null;
         tracker.rounds = json.rounds;
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
