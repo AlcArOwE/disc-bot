@@ -78,6 +78,13 @@ class TicketManager {
         this.tickets.clear();
         for (const d of data) {
             const t = TicketStateMachine.fromJSON(d);
+
+            // Safety: Unlock payment lock on restart to prevent deadlocks
+            if (t.data.paymentLocked) {
+                t.updateData({ paymentLocked: false });
+                logger.warn('Unlocked stuck payment lock on restore', { channelId: t.channelId });
+            }
+
             this.tickets.set(t.channelId, t);
             if (t.data.opponentId && !t.isComplete()) this.setCooldown(t.data.opponentId);
         }

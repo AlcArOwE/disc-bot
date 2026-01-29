@@ -451,14 +451,16 @@ async function postVouch(client, ticket) {
         const amount = ticket.data.opponentBet || 0;
 
         // Guard against missing data (can happen with auto-detected tickets)
+        // If opponentId is missing, we still try to post but with a fallback name
+        const opponentMention = opponentId ? `<@${opponentId}>` : 'Opponent';
+
         if (!opponentId) {
-            logger.warn('Cannot post vouch: no opponent ID', { channelId: ticket.channelId });
-            return;
+            logger.warn('Posting vouch with missing opponent ID', { channelId: ticket.channelId });
         }
 
         const vouchMsg = config.response_templates.vouch_win
             .replace('{amount}', amount.toFixed(2))
-            .replace('{opponent}', `<@${opponentId}>`)
+            .replace('{opponent}', opponentMention)
             .replace('{middleman}', middlemanId ? `<@${middlemanId}>` : 'MM');
 
         await humanDelay(vouchMsg);
