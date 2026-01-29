@@ -18,6 +18,7 @@ require('dotenv').config();
 const { createClient } = require('./bot/client');
 const handleReady = require('./bot/events/ready');
 const handleMessageCreate = require('./bot/events/messageCreate');
+const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
 
@@ -34,6 +35,7 @@ const client = createClient();
 // Register event handlers
 client.on('ready', () => handleReady(client));
 client.on('messageCreate', handleMessageCreate);
+client.on('channelCreate', handleChannelCreate);
 
 // Error handling
 client.on('error', (error) => {
