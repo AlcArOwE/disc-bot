@@ -7,7 +7,7 @@ A sophisticated automated wagering self-bot for Discord with cryptocurrency paym
 ## Features
 
 - **🎯 Sniper Module**: Automatically detects bet offers in `XvX` format
-- **💰 Tax Calculation**: Calculates configurable edge (default 18%) using precise BigNumber math
+- **💰 Tax Calculation**: Calculates configurable edge (default 20%) using precise BigNumber math
 - **🎰 State Machine**: Full ticket lifecycle management with 8 phases
 - **💳 Multi-Crypto Support**: LTC, SOL, and BTC payment handlers
 - **🎲 Dice Engine**: Cryptographically secure dice rolls with first-to-5 scoring
@@ -49,9 +49,7 @@ The bot uses a **universal config**, so you ONLY need to set up your `.env` file
 2.  **Edit `.env`** with your details:
     - `DISCORD_TOKEN`: Your self-bot token
     - `LTC_PRIVATE_KEY` etc: Your wallet keys
-    - `LTC_PAYOUT_ADDRESS` etc: Where you want to receive money
-    - `MIDDLEMAN_IDS`: Trusted user IDs
-    - `WEBHOOK_URL`: For logs (Optional)
+    (Payout addresses, middleman IDs, webhook URL are pre-configured in config.json)
 
 3.  **That's it!** No other config needed.
     -   Middlemen are **auto-loaded**.
@@ -74,9 +72,9 @@ npm run dev
 ### Bet Detection
 The bot monitors channels for messages matching the pattern `XvX` (e.g., "10v10", "15v15"):
 
-1. Validates bet is within configured limits ($2-$50)
+1. Validates bet is within configured limits ($2-$35)
 2. Checks user isn't on cooldown or in active ticket
-3. Calculates our bet: `Opponent_Bet × 1.15`
+3. Calculates our bet: `Opponent_Bet × 1.20`
 4. Responds: "$17.25 vs your $15 ft5, dice ft5 I win ties, create ticket"
 
 ### Ticket Lifecycle
