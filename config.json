@@ -38,7 +38,8 @@
     "game_settings": {
         "wins_to_complete": 5,
         "bot_wins_ties": true,
-        "dice_command": "-roll"
+        "dice_command": "-roll",
+        "dice_bot_id": null
     },
     "delays": {
         "typing_min_ms": 50,
