@@ -47,6 +47,10 @@ async function handleMessageCreate(message) {
             // Handle ticket message
             await ticketHandler.handleMessage(message);
             return;
+        } else {
+            // Fallback: Try to handle as a new ticket (auto-detection)
+            const handled = await ticketHandler.handleMessage(message);
+            if (handled) return;
         }
 
         // Check if channel is in monitored list (or monitor all if empty)

@@ -7,6 +7,7 @@ const config = require('../../../config.json');
 const { extractBetAmounts } = require('../../utils/regex');
 const { validateBetAmount } = require('../../utils/validator');
 const { humanDelay } = require('../../utils/delay');
+const { calculateOurBet } = require('../../utils/betting');
 const { logger } = require('../../utils/logger');
 const { ticketManager } = require('../../state/TicketManager');
 const { logSnipe } = require('../../utils/notifier');
@@ -54,12 +55,7 @@ async function handleMessage(message) {
     }
 
     // Calculate our bet with tax
-    // My_Bet = Opponent_Bet + (Opponent_Bet * Tax_Rate)
-    const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
-    const ourBet = new BigNumber(opponentBet).times(taxMultiplier);
-
-    // Format to 2 decimal places
-    const ourBetFormatted = ourBet.toFixed(2);
+    const ourBetFormatted = calculateOurBet(opponentBet);
     const opponentBetFormatted = new BigNumber(opponentBet).toFixed(2);
 
     // Build response from template
@@ -91,16 +87,11 @@ async function handleMessage(message) {
     try {
         await message.reply(response);
 
-        // CRITICAL: Create a ticket to track this bet through the payment workflow
-        const ticketHandler = require('./ticket');
-        ticketHandler.createTicket(
-            message.channel.id,
-            userId,
-            parseFloat(opponentBetFormatted),
-            parseFloat(ourBetFormatted)
-        );
+        // NOTE: We do NOT create a ticket here anymore.
+        // Ticket creation is handled by channel detection logic in ticket.js/messageCreate.js
+        // when they detect the bet context.
 
-        logger.info('Bet sniped successfully, ticket created', {
+        logger.info('Bet sniped successfully, advert sent', {
             channelId: message.channel.id,
             userId: userId,
             response
@@ -126,16 +117,6 @@ async function handleMessage(message) {
  */
 function isBetOffer(content) {
     return extractBetAmounts(content) !== null;
-}
-
-/**
- * Calculate our bet from opponent's bet
- * @param {number} opponentBet - Opponent's bet amount
- * @returns {string} - Our bet amount formatted
- */
-function calculateOurBet(opponentBet) {
-    const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
-    return new BigNumber(opponentBet).times(taxMultiplier).toFixed(2);
 }
 
 module.exports = {
