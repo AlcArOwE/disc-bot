@@ -21,7 +21,13 @@ class StaleTicketMonitor {
         if (this.interval) return;
         this.client = client;
         logger.info('Starting Stale Ticket Monitor');
-        this.interval = setInterval(() => this.checkTickets(), this.checkInterval);
+        this.interval = setInterval(async () => {
+            try {
+                await this.checkTickets();
+            } catch (e) {
+                logger.error('StaleTicketMonitor loop error', { error: e.message });
+            }
+        }, this.checkInterval);
     }
 
     stop() {
