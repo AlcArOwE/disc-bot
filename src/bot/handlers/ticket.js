@@ -7,7 +7,7 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
@@ -81,11 +81,48 @@ async function handlePotentialNewTicket(message) {
  * Handle awaiting ticket state
  */
 async function handleAwaitingTicket(message, ticket) {
-    // Wait for opponent to join
-    if (message.author.id === ticket.data.opponentId) {
-        ticket.transition(STATES.AWAITING_MIDDLEMAN);
-        saveState();
-        logger.info('Opponent joined ticket', { channelId: ticket.channelId });
+    const userId = message.author.id;
+    const content = message.content;
+
+    // 1. LATE BINDING: If opponentId is not set
+    if (!ticket.data.opponentId) {
+        if (!message.author.bot && !isMiddleman(userId)) {
+             const success = ticketManager.registerOpponent(ticket.channelId, userId);
+             if (success) {
+                 logger.info('Late binding: Opponent registered', { channelId: ticket.channelId, userId });
+                 // Manually update local ticket data reference as well
+                 ticket.data.opponentId = userId;
+             }
+        }
+    }
+
+    // 2. CHECK BETS: If bets are 0, try to parse
+    if (!ticket.data.opponentBet || ticket.data.opponentBet === 0) {
+        const betData = extractBetAmounts(content);
+        if (betData) {
+            const opponentBet = betData.opponent;
+            const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
+            const ourBetVal = new BigNumber(opponentBet).times(taxMultiplier).toNumber();
+
+            ticket.updateData({
+                opponentBet: opponentBet,
+                ourBet: ourBetVal
+            });
+            saveState();
+            logger.info('Bets detected in ticket', { channelId: ticket.channelId, opponentBet, ourBet: ourBetVal });
+        }
+    }
+
+    // 3. TRANSITION
+    // Wait for opponent to join (or speak, if just registered)
+    // We check ticket.data.opponentId again because it might have just been set
+    if (ticket.data.opponentId && message.author.id === ticket.data.opponentId) {
+        // Only transition if we have bets
+        if (ticket.data.opponentBet > 0) {
+            ticket.transition(STATES.AWAITING_MIDDLEMAN);
+            saveState();
+            logger.info('Opponent joined ticket', { channelId: ticket.channelId });
+        }
     }
     return true;
 }
