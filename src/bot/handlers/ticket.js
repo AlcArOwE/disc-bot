@@ -7,9 +7,10 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
+const { calculateOurBet } = require('../../utils/betting');
 const { logger, logGame } = require('../../utils/logger');
 const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
 const { logGameResult, logPayment } = require('../../utils/notifier');
@@ -65,14 +66,32 @@ async function handleMessage(message) {
  * Check if this message represents a new ticket
  */
 async function handlePotentialNewTicket(message) {
-    // Check if channel name looks like a ticket
+    // Check if channel name looks like a ticket or wager
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    if (!channelName.includes('ticket') && !channelName.includes('wager')) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
+    // Fallback/Recovery: Latch onto the first non-bot user as opponent
+    // But we only create the ticket if we detect a valid bet offer OR explicit command
+    const betData = extractBetAmounts(message.content);
+
+    if (betData) {
+        const opponentId = message.author.id;
+        const opponentBet = betData.opponent;
+        const ourBet = parseFloat(calculateOurBet(opponentBet));
+
+        logger.info('Auto-detected ticket from bet offer', {
+            channelId: message.channel.id,
+            opponentId,
+            opponentBet
+        });
+
+        createTicket(message.channel.id, opponentId, opponentBet, ourBet);
+        return true;
+    }
+
+    // If no bet data, just log potential
     logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
     return false;
 }
@@ -171,6 +190,16 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     }
 
     const amount = ticket.data.ourBet;
+
+    // Safety guard: Ensure positive amount
+    if (!amount || amount <= 0) {
+        logger.error('Safety guard: Attempted zero/negative payment', {
+            channelId: ticket.channelId,
+            amount
+        });
+        await message.reply('⚠️ Error: Invalid bet amount (0 or negative). Cannot send payment.');
+        return false;
+    }
 
     // Lock payment to prevent race conditions
     ticket.updateData({ paymentLocked: true });
@@ -323,12 +352,26 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         tracker = gameTrackers.get(ticket.channelId);
     }
 
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
+    // Check for pending roll if we are responding
+    let botRoll;
+    if (opponentRoll !== null && tracker) {
+        botRoll = tracker.popPendingBotRoll();
+    }
+
+    // If no pending roll, or we are going first, roll new
+    if (botRoll === null || botRoll === undefined) {
+        botRoll = DiceEngine.roll();
+    }
 
     // Send dice command/result
     const diceCmd = config.game_settings.dice_command;
     await channel.send(diceCmd);
+
+    // If we are going first (opponentRoll is null), save pending
+    if (opponentRoll === null && tracker) {
+        tracker.setPendingBotRoll(botRoll);
+        saveState();
+    }
 
     // If we have opponent's roll, record the round
     if (opponentRoll !== null && tracker) {
