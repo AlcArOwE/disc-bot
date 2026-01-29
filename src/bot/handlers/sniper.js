@@ -10,6 +10,7 @@ const { humanDelay } = require('../../utils/delay');
 const { logger } = require('../../utils/logger');
 const { ticketManager } = require('../../state/TicketManager');
 const { logSnipe } = require('../../utils/notifier');
+const { channelLock } = require('../../utils/ChannelLock');
 
 /**
  * Handle incoming message for bet detection
@@ -76,6 +77,12 @@ async function handleMessage(message) {
 
     // CRITICAL: Set cooldown IMMEDIATELY to prevent duplicate snipes during delay
     ticketManager.setCooldown(userId);
+
+    // Acquire channel lock to prevent spamming the same channel
+    if (!channelLock.acquire(message.channel.id)) {
+        logger.debug('Channel locked, skipping snipe', { channelId: message.channel.id });
+        return false;
+    }
 
     // Show typing indicator immediately
     try {
