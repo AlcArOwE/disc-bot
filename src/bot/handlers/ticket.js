@@ -112,7 +112,8 @@ async function handleAwaitingMiddleman(message, ticket) {
         logger.info('🟢 Middleman detected! Awaiting address...', { channelId: ticket.channelId, middlemanId: userId });
 
         // Silence Fix: Acknowledge middleman in channel
-        await message.channel.send("Middleman detected. Please provide payment address.");
+        await humanDelay();
+        await message.channel.send("middleman detected, send addy pls");
         return true;
     }
 
@@ -218,7 +219,7 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         });
 
         await humanDelay();
-        await message.channel.send(`Payment failed: ${result.error}`);
+        await message.channel.send(`yo something went wrong with payment: ${result.error}`);
 
         // Release lock so we can try again
         ticket.updateData({ paymentLocked: false });
@@ -236,7 +237,8 @@ async function handlePaymentSent(message, ticket) {
     if (message.author.id === ticket.data.middlemanId) {
         if (isPaymentConfirmation(message.content)) {
             // Flow Fix: Auto-confirm and auto-roll
-            await message.channel.send("Confirm");
+            await humanDelay();
+            await message.channel.send("confirmed");
 
             // Initialize score tracker for the game
             const tracker = new ScoreTracker(ticket.channelId);
@@ -359,6 +361,7 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
 
     // Send dice command/result
     const diceCmd = config.game_settings.dice_command;
+    await humanDelay(); // Ensure delay before rolling
     await channel.send(diceCmd);
 
     // If we have opponent's roll, record the round
@@ -375,7 +378,7 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
         saveState();
 
         // Announce round result
-        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
+        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'i take' : 'u take'} (${tracker.getFormattedScore()})`;
         await humanDelay(roundMsg);
         await channel.send(roundMsg);
 
@@ -413,14 +416,14 @@ async function handleGameComplete(channel, ticket, tracker) {
         // Post payout address
         const payoutAddr = getPayoutAddress();
         await humanDelay();
-        await channel.send(`GG! Send payout to: ${payoutAddr}`);
+        await channel.send(`gg send here: ${payoutAddr}`);
 
         // Post vouch after a delay
         await new Promise(r => setTimeout(r, 5000));
         await postVouch(channel.client, ticket);
     } else {
         await humanDelay();
-        await channel.send('GG, well played!');
+        await channel.send('gg wp');
     }
 
     // Clean up
