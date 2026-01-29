@@ -74,15 +74,15 @@ async function handleMessage(message) {
         ourBet: ourBetFormatted
     });
 
-    // Human-like delay before responding
-    await humanDelay(response);
-
-    // Show typing indicator
+    // Show typing indicator immediately
     try {
         await message.channel.sendTyping();
     } catch (e) {
         // Ignore typing errors
     }
+
+    // Human-like delay before responding
+    await humanDelay(response);
 
     // Send response
     try {

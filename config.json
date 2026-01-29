@@ -39,10 +39,10 @@
         "dice_command": "-roll"
     },
     "delays": {
-        "typing_min_ms": 500,
-        "typing_max_ms": 1500,
-        "response_base_ms": 800,
-        "response_per_char_ms": 30
+        "typing_min_ms": 300,
+        "typing_max_ms": 1000,
+        "response_base_ms": 500,
+        "response_per_char_ms": 20
     },
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
