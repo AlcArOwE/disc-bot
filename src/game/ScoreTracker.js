@@ -24,6 +24,7 @@ class ScoreTracker {
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
+        this.pendingBotRoll = null; // Persist bot roll if it goes first
     }
 
     /**
@@ -179,7 +180,8 @@ class ScoreTracker {
             rounds: this.rounds,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
-            winner: this.winner
+            winner: this.winner,
+            pendingBotRoll: this.pendingBotRoll
         };
     }
 
@@ -196,6 +198,7 @@ class ScoreTracker {
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
         tracker.winner = json.winner;
+        tracker.pendingBotRoll = json.pendingBotRoll || null;
         return tracker;
     }
 }

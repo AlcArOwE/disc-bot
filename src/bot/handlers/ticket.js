@@ -7,7 +7,7 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
@@ -71,10 +71,36 @@ async function handlePotentialNewTicket(message) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    const userId = message.author.id;
+    // Don't create ticket for ourselves or middlemen
+    if (userId === message.client.user.id || isMiddleman(userId)) {
+        return false;
+    }
+
+    // Opponent Latching: The first valid user in a ticket channel becomes the opponent
+    logger.info('Opponent Latching: Detected new potential ticket', {
+        channelId: message.channel.id,
+        userId,
+        name: channelName
+    });
+
+    // Try to extract bet amounts from this message to initialize ticket
+    // If not found, we'll start with 0 and rely on manual entry or later updates
+    const betData = extractBetAmounts(message.content);
+    let opponentBet = 0;
+    let ourBet = 0;
+
+    if (betData) {
+        opponentBet = betData.opponent;
+        const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
+        ourBet = new BigNumber(opponentBet).times(taxMultiplier).toNumber();
+    }
+
+    // Create the ticket
+    // We go to AWAITING_MIDDLEMAN immediately since we have an opponent
+    createTicket(message.channel.id, userId, opponentBet, ourBet);
+
+    return true;
 }
 
 /**
@@ -131,6 +157,7 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     if (!address) {
         // If message is decently long or contains "address", but we failed to parse, warn the user
         if (message.content.length > 20 || message.content.toLowerCase().includes('address')) {
+            await humanDelay();
             await message.reply(`⚠️ I couldn't find a valid ${network} address. Please paste ONLY the address or check format.`);
         }
         return false;
@@ -171,6 +198,14 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     }
 
     const amount = ticket.data.ourBet;
+
+    // SAFETY GUARD: Ensure amount is positive
+    if (amount <= 0) {
+        logger.warn('Attempted to send payment with 0 or invalid amount', { channelId: ticket.channelId, amount });
+        await humanDelay();
+        await message.channel.send('⚠️ Error: Bet amount is not set or invalid. Cannot send payment.');
+        return false;
+    }
 
     // Lock payment to prevent race conditions
     ticket.updateData({ paymentLocked: true });
@@ -328,6 +363,7 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
 
     // Send dice command/result
     const diceCmd = config.game_settings.dice_command;
+    await gameActionDelay();
     await channel.send(diceCmd);
 
     // If we have opponent's roll, record the round
