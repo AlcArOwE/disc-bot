@@ -82,7 +82,8 @@ function extractCryptoAddress(message, network) {
     // Split message into words and find matching address
     const words = message.split(/\s+/);
     for (const word of words) {
-        const cleaned = word.replace(/[<>]/g, ''); // Remove Discord formatting
+        // Remove formatting and common punctuation
+        const cleaned = word.replace(/[<>.,;:"'!?]/g, '');
         if (pattern.test(cleaned)) {
             return cleaned;
         }

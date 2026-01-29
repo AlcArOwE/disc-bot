@@ -111,6 +111,10 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     const address = extractCryptoAddress(message.content, network);
 
     if (!address) {
+        // If message is decently long or contains "address", but we failed to parse, warn the user
+        if (message.content.length > 20 || message.content.toLowerCase().includes('address')) {
+            await message.reply(`⚠️ I couldn't find a valid ${network} address. Please paste ONLY the address or check format.`);
+        }
         return false;
     }
 
