@@ -6,6 +6,7 @@ const { logger } = require('../utils/logger');
 const config = require('../../config.json');
 const { channelLock } = require('../utils/ChannelLock');
 const { ticketManager } = require('../state/TicketManager');
+const { getRandomDelay } = require('../utils/delay');
 
 class AutoAdvertiser {
     constructor() {
@@ -35,7 +36,23 @@ class AutoAdvertiser {
 
         logger.info('Starting Auto-Advertiser', { intervalMs });
 
-        this.interval = setInterval(() => this.advertise(), intervalMs);
+        // Add fuzziness to interval to avoid bot-like regularity
+        const scheduleNext = () => {
+            if (!this.isRunning) return;
+            const variance = getRandomDelay(-2000, 2000);
+            const nextDelay = Math.max(5000, intervalMs + variance);
+
+            this.interval = setTimeout(async () => {
+                try {
+                    await this.advertise();
+                } catch (e) {
+                    logger.error('Advertiser loop error', { error: e.message });
+                }
+                scheduleNext();
+            }, nextDelay);
+        };
+
+        scheduleNext();
     }
 
     /**
@@ -43,7 +60,7 @@ class AutoAdvertiser {
      */
     stop() {
         if (this.interval) {
-            clearInterval(this.interval);
+            clearTimeout(this.interval);
             this.interval = null;
         }
         this.isRunning = false;
@@ -90,9 +107,15 @@ class AutoAdvertiser {
                     }
                 }
 
+                // Get message (handle array or string)
+                let msgContent = settings.message;
+                if (Array.isArray(msgContent)) {
+                    msgContent = msgContent[Math.floor(Math.random() * msgContent.length)];
+                }
+
                 // Use lock to respect per-channel rate limits
                 await channelLock.acquire(channelId);
-                await channel.send(settings.message);
+                await channel.send(msgContent);
                 logger.info('Advertisement sent', { channelId });
 
             } catch (error) {

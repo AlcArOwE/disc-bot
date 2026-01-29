@@ -13,7 +13,7 @@ const { humanDelay, gameActionDelay } = require('../../utils/delay');
 const { channelLock } = require('../../utils/ChannelLock');
 const { calculateOurBet } = require('../../utils/betting');
 const { logger, logGame } = require('../../utils/logger');
-const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
+const { sendPayment, getPayoutAddress, validateAddress, getBalance } = require('../../crypto');
 const { logGameResult, logPayment } = require('../../utils/notifier');
 const DiceEngine = require('../../game/DiceEngine');
 const ScoreTracker = require('../../game/ScoreTracker');
@@ -133,6 +133,16 @@ async function handleLatchOpponent(message, ticket, isNew = false) {
                 const opponentBet = betData.opponent;
                 const ourBet = parseFloat(calculateOurBet(opponentBet));
 
+                // Check balance before accepting
+                const balanceCheck = await getBalance();
+                // 0.001 buffer for fees
+                if (balanceCheck.balance < (ourBet + 0.001) && !config.simulation_mode) {
+                    logger.warn('Insufficient balance to accept bet', { balance: balanceCheck.balance, required: ourBet });
+                    await humanDelay();
+                    await message.reply(`⚠️ Cannot accept bet: Insufficient funds in wallet.`);
+                    return false; // Abort latching
+                }
+
                 ticket.updateData({
                     opponentBet,
                     ourBet
@@ -145,6 +155,10 @@ async function handleLatchOpponent(message, ticket, isNew = false) {
     } catch (e) {
         logger.warn('Failed to scan history for bets', { error: e.message });
     }
+
+    // Double check if we latched but didn't find bet -> we might accept 0 bet and prompt?
+    // User requested "robustness". If we prompt, we should check balance LATER when user replies.
+    // For now, if auto-found, we validated.
 
     saveState();
 
@@ -603,6 +617,13 @@ async function handleMissingBet(message, ticket) {
 
     const opponentBet = betData.opponent;
     const ourBet = parseFloat(calculateOurBet(opponentBet));
+
+    // Check balance
+    const balanceCheck = await getBalance();
+    if (balanceCheck.balance < (ourBet + 0.001) && !config.simulation_mode) {
+        await message.reply(`⚠️ Cannot accept bet: Insufficient funds.`);
+        return;
+    }
 
     // Update ticket
     ticket.updateData({

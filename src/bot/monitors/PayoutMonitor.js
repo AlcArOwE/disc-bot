@@ -16,13 +16,22 @@ class PayoutMonitor {
         this.interval = null;
         // Check every minute
         this.checkInterval = 60 * 1000;
+        // Track processed transactions to prevent double-spending
+        this.processedTxIds = new Set();
     }
 
     start(client) {
         if (this.interval) return;
         this.client = client;
         logger.info('Starting Payout Monitor');
-        this.interval = setInterval(() => this.checkPayouts(), this.checkInterval);
+        // Wrap in try/catch to ensure loop doesn't die
+        this.interval = setInterval(async () => {
+            try {
+                await this.checkPayouts();
+            } catch (e) {
+                logger.error('PayoutMonitor loop error', { error: e.message });
+            }
+        }, this.checkInterval);
     }
 
     stop() {
@@ -51,6 +60,9 @@ class PayoutMonitor {
                 const gameEndTime = ticket.data.gameEndedAt || ticket.updatedAt;
 
                 const match = txs.find(tx => {
+                    // Skip if already processed
+                    if (this.processedTxIds.has(tx.hash)) return false;
+
                     const isRecent = tx.time > gameEndTime;
                     // Allow small variance for fees (0.01) if needed, or exact match
                     const isAmountMatch = Math.abs(tx.value - expectedAmount) < 0.001;
@@ -58,6 +70,7 @@ class PayoutMonitor {
                 });
 
                 if (match) {
+                    this.processedTxIds.add(match.hash);
                     await this.handlePayoutReceived(ticket, match);
                 }
             }
