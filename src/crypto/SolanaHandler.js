@@ -132,6 +132,48 @@ class SolanaHandler {
             return { success: false, error: error.message };
         }
     }
+
+    /**
+     * Get recent transactions
+     * @param {number} limit
+     * @returns {Promise<Array>}
+     */
+    async getRecentTransactions(limit = 10) {
+        if (!await this.initialize()) return [];
+
+        try {
+            const signatures = await this.connection.getConfirmedSignaturesForAddress2(
+                this.publicKey,
+                { limit }
+            );
+
+            const txs = await this.connection.getParsedTransactions(
+                signatures.map(s => s.signature)
+            );
+
+            return txs.filter(tx => tx).map(tx => {
+                const instr = tx.transaction.message.instructions[0];
+                let amount = 0;
+
+                // Simple parsing for SOL transfer
+                if (instr && instr.program === 'system' && instr.parsed && instr.parsed.type === 'transfer') {
+                    if (instr.parsed.info.destination === this.publicKey.toString()) {
+                        amount = instr.parsed.info.lamports / 1000000000;
+                    }
+                }
+
+                return {
+                    txId: tx.transaction.signatures[0],
+                    amount: amount,
+                    confirmations: 1, // Finalized
+                    timestamp: tx.blockTime * 1000
+                };
+            });
+        } catch (error) {
+            logger.error('Failed to get recent SOL txs', { error: error.message });
+            return [];
+        }
+    }
 }
 
 module.exports = SolanaHandler;

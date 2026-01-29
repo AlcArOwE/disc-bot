@@ -22,17 +22,19 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "discord.js-selfbot-v13": "^3.4.2",
-    "bignumber.js": "^9.1.2",
-    "dotenv": "^16.4.5",
-    "bitcore-lib-ltc": "^8.25.10",
     "@solana/web3.js": "^1.95.4",
+    "bignumber.js": "^9.1.2",
     "bitcoinjs-lib": "^6.1.6",
+    "bitcore-lib-ltc": "^8.25.10",
+    "bs58": "^6.0.0",
+    "bufferutil": "^4.1.0",
+    "discord.js-selfbot-v13": "^3.4.2",
+    "dotenv": "^16.4.5",
     "ecpair": "^2.1.0",
-    "tiny-secp256k1": "^2.2.3",
     "node-fetch": "^2.7.0",
-    "winston": "^3.14.2",
-    "bs58": "^6.0.0"
+    "tiny-secp256k1": "^2.2.3",
+    "utf-8-validate": "^5.0.10",
+    "winston": "^3.14.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"
