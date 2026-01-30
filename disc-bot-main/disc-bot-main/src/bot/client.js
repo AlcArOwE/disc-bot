@@ -10,9 +10,10 @@ let client = null;
 
 /**
  * Create and configure the Discord client
+ * @param {object} options - Custom client options
  * @returns {Client}
  */
-function createClient() {
+function createClient(options = {}) {
     if (client) return client;
 
     const clientOptions = {
@@ -20,7 +21,8 @@ function createClient() {
         // Reduce memory usage
         messageCacheMaxSize: 100,
         messageCacheLifetime: 240,
-        messageSweepInterval: 300
+        messageSweepInterval: 300,
+        ...options
     };
 
     // Add proxy support if configured
