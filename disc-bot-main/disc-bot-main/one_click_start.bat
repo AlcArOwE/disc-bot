@@ -1,60 +1,126 @@
 @echo off
-title ONE CLICK START (Installer + Launcher)
-echo ==========================================
-echo        ONE CLICK START - Discord Bot
-echo ==========================================
+title Discord Wagering Bot - One Click Start
+color 0A
+echo.
+echo  ============================================
+echo       DISCORD WAGERING BOT - ONE CLICK START
+echo  ============================================
 echo.
 
-:: 1. Check Node.js
-echo [1/4] Checking Node.js...
+:: Change to script directory (handles double-click from anywhere)
+cd /d "%~dp0"
+
+:: Step 1: Check Node.js
+echo  [1/4] Checking Node.js...
 node --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Node.js is not installed!
-    echo Please install from https://nodejs.org/
+    color 0C
+    echo.
+    echo  [ERROR] Node.js is not installed!
+    echo.
+    echo  Please download and install from:
+    echo  https://nodejs.org/
     echo.
     pause
-    exit
+    exit /b 1
 )
-echo [OK] Node.js found.
+for /f "tokens=*" %%i in ('node --version') do set NODE_VER=%%i
+echo  [OK] Node.js %NODE_VER% found.
 echo.
 
-:: 2. Install Dependencies (if needed)
-echo [2/4] Checking dependencies...
+:: Step 2: Install Dependencies
+echo  [2/4] Checking dependencies...
 if not exist node_modules (
-    echo Modules missing. Installing now...
-    call npm install
+    echo  [INFO] First run detected. Installing dependencies...
+    echo  [INFO] This may take 1-2 minutes...
+    echo.
+    call npm ci --silent 2>nul || call npm install
     if %errorlevel% neq 0 (
-        echo [ERROR] Installation failed!
+        color 0C
+        echo.
+        echo  [ERROR] Installation failed!
+        echo  Try running: npm install
+        echo.
         pause
-        exit
+        exit /b 1
     )
-    echo [OK] Installation complete.
+    echo  [OK] Dependencies installed successfully.
 ) else (
-    echo [OK] Dependencies already installed.
+    echo  [OK] Dependencies already installed.
 )
 echo.
 
-:: 3. Check Config & Env
-echo [3/4] Checking configuration...
+:: Step 3: Check .env file
+echo  [3/4] Checking configuration...
 if not exist .env (
     if exist .env.example (
         copy .env.example .env >nul
-        echo [WARN] Created .env file. Please edit it!
+        color 0E
+        echo.
+        echo  ============================================
+        echo   IMPORTANT: .env FILE CREATED
+        echo  ============================================
+        echo.
+        echo  A new .env file has been created.
+        echo  You MUST edit it before the bot will work:
+        echo.
+        echo    1. Open .env in Notepad
+        echo    2. Add your DISCORD_TOKEN
+        echo    3. Add your LTC_PRIVATE_KEY
+        echo    4. Save and close
+        echo    5. Run this script again
+        echo.
+        echo  ============================================
+        echo.
+        pause
+        exit /b 1
+    ) else (
+        color 0C
+        echo  [ERROR] .env.example not found!
+        echo  Please re-download the bot.
+        pause
+        exit /b 1
     )
 )
-if not exist config.json (
-    echo [ERROR] config.json is missing! Please re-download the bot.
+
+:: Check if .env has real values (not placeholders)
+findstr /C:"your_discord_token_here" .env >nul 2>&1
+if %errorlevel% equ 0 (
+    color 0E
+    echo.
+    echo  [WARNING] .env still has placeholder values!
+    echo  Please edit .env and add your real credentials.
+    echo.
     pause
-    exit
+    exit /b 1
 )
-echo [OK] Config checks done.
+
+if not exist config.json (
+    color 0C
+    echo  [ERROR] config.json is missing!
+    echo  Please re-download the bot.
+    pause
+    exit /b 1
+)
+echo  [OK] Configuration verified.
 echo.
 
-:: 4. Start Bot
-echo [4/4] Starting bot...
+:: Step 4: Start the bot
+echo  [4/4] Starting Discord Wagering Bot...
 echo.
+echo  ============================================
+echo   BOT IS RUNNING - Keep this window open!
+echo  ============================================
+echo.
+echo  Press Ctrl+C to stop the bot.
+echo.
+
 node src/index.js
+
+:: Bot stopped
 echo.
-echo ==========================================
-echo Bot stopped.
+echo  ============================================
+echo   Bot has stopped.
+echo  ============================================
+echo.
 pause
