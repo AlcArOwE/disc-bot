@@ -92,16 +92,13 @@ async function handleMessage(message) {
         const { messageQueue } = require('../../utils/MessageQueue');
         await messageQueue.send(message.channel, response, { replyTo: message });
 
-        // CRITICAL: Create a ticket to track this bet through the payment workflow
-        const ticketHandler = require('./ticket');
-        ticketHandler.createTicket(
-            message.channel.id,
-            userId,
-            parseFloat(opponentBetFormatted),
-            parseFloat(ourBetFormatted)
-        );
+        // NOTE: We do NOT create a ticket here.
+        // Tickets are created when the actual ticket channel (e.g., #ticket-1234)
+        // is detected via channelCreate event. This allows the bot to continue
+        // sniping other bet offers in this public channel.
+        // The user cooldown (set at line 78) prevents duplicate snipes on same user.
 
-        logger.info('Bet sniped successfully, ticket created', {
+        logger.info('Bet sniped successfully', {
             channelId: message.channel.id,
             userId: userId,
             response
