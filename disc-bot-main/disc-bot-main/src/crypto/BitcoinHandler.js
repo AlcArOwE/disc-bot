@@ -4,6 +4,7 @@
  */
 
 const { logger } = require('../utils/logger');
+const config = require('../../config.json');
 
 class BitcoinHandler {
     constructor() {
@@ -80,7 +81,17 @@ class BitcoinHandler {
         const url = `https://api.blockcypher.com/v1/btc/main/addrs/${this.address}?unspentOnly=true`;
 
         try {
-            const response = await fetch(url);
+            const fetchOptions = {};
+            if (config.proxy_url) {
+                try {
+                    const HttpsProxyAgent = require('https-proxy-agent');
+                    fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
+                } catch (e) {
+                    logger.debug('Proxy agent not available for BTC UTXOs', { error: e.message });
+                }
+            }
+
+            const response = await fetch(url, fetchOptions);
             const data = await response.json();
 
             if (data.error) {
@@ -201,11 +212,22 @@ class BitcoinHandler {
         const fetch = (await import('node-fetch')).default;
         const url = 'https://api.blockcypher.com/v1/btc/main/txs/push';
 
-        const response = await fetch(url, {
+        const fetchOptions = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tx: txHex })
-        });
+        };
+
+        if (config.proxy_url) {
+            try {
+                const HttpsProxyAgent = require('https-proxy-agent');
+                fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
+            } catch (e) {
+                logger.debug('Proxy agent not available for BTC broadcast', { error: e.message });
+            }
+        }
+
+        const response = await fetch(url, fetchOptions);
 
         const data = await response.json();
 
