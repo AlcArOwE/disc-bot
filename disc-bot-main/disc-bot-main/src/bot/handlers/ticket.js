@@ -117,17 +117,47 @@ async function handleAwaitingMiddleman(message, ticket) {
     return false;
 }
 
+// Debug flag
+const DEBUG = process.env.DEBUG === '1';
+
 /**
  * Handle awaiting payment address state
  */
 async function handleAwaitingPaymentAddress(message, ticket) {
+    // DEBUG: Log all messages in this state
+    if (DEBUG) {
+        logger.debug('[ADDR_STATE] Message received in AWAITING_PAYMENT_ADDRESS', {
+            authorId: message.author.id,
+            middlemanId: ticket.data.middlemanId,
+            isMiddleman: message.author.id === ticket.data.middlemanId,
+            content: message.content,
+            contentLength: message.content.length
+        });
+    }
+
     // Only process middleman messages
     if (message.author.id !== ticket.data.middlemanId) {
+        if (DEBUG) {
+            logger.debug('[ADDR_STATE] SKIP - Not from middleman', {
+                authorId: message.author.id,
+                expectedMiddlemanId: ticket.data.middlemanId
+            });
+        }
         return false;
     }
 
     const network = config.crypto_network;
     const address = extractCryptoAddress(message.content, network);
+
+    // DEBUG: Log extraction result
+    if (DEBUG) {
+        logger.debug('[ADDR_STATE] Address extraction result', {
+            network,
+            extractedAddress: address,
+            messageContent: message.content,
+            contentWords: message.content.split(/\s+/)
+        });
+    }
 
     if (!address) {
         // If message is decently long or contains "address", but we failed to parse, warn the user

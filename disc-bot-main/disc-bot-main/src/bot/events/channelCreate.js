@@ -52,6 +52,16 @@ async function handleChannelCreate(channel) {
                 channelId: channel.id,
                 state: ticket.getState()
             });
+
+            // DEBUG: Print to console so user can see
+            if (process.env.DEBUG === '1') {
+                logger.debug('[CHANNEL_CREATE] Auto-ticket created', {
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    ticketState: ticket.getState(),
+                    ticketData: ticket.data
+                });
+            }
         }
 
     } catch (error) {
