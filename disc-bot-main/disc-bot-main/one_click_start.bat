@@ -26,13 +26,51 @@ goto MENU
 
 :RUN_BOT
 cls
-echo Starting bot...
+echo  =========================================
+echo     PRE-FLIGHT ENVIRONMENT CHECK
+echo  =========================================
 echo.
-if not exist node_modules call npm install
+
+:: Check for Node.js
+call node --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Node.js is not installed or not in PATH!
+    echo Please install Node.js from https://nodejs.org/
+    pause
+    goto MENU
+)
+
+:: Check for NPM
+call npm --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] NPM is not installed or not in PATH!
+    pause
+    goto MENU
+)
+
+:: Check dependencies
+if not exist node_modules (
+    echo [INFO] node_modules missing. Installing dependencies...
+    echo.
+    call npm install
+    if %errorlevel% neq 0 (
+        echo.
+        echo [ERROR] Installation failed!
+        pause
+        goto MENU
+    )
+)
+
 :RESTART
+cls
+echo  =========================================
+echo     DISCORD WAGERING BOT: ACTIVE
+echo  =========================================
+echo.
 node src/index.js
 echo.
-echo Bot stopped. Restarting in 5 seconds...
+echo [SYSTEM] Bot stopped. Restarting in 5 seconds...
+echo Press Ctrl+C to stop the loop.
 timeout /t 5 /nobreak >nul
 goto RESTART
 
