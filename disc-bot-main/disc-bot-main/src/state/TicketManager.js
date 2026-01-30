@@ -10,8 +10,13 @@ class TicketManager {
     constructor() {
         this.tickets = new Map();
         this.cooldowns = new Map();
+        // Pending wagers: store bet info when user is sniped, to be linked when ticket is created
+        // Key: userId, Value: { opponentBet, ourBet, channelId, timestamp }
+        this.pendingWagers = new Map();
         // Cooldown duration: Use config or default to 2.5 seconds (anti-spam)
         this.cooldownDuration = config.bet_cooldown_ms || 2500;
+        // Pending wager expiry: 5 minutes (should be enough time to create ticket)
+        this.pendingWagerExpiryMs = 5 * 60 * 1000;
     }
 
     createTicket(channelId, data) {
@@ -88,7 +93,74 @@ class TicketManager {
         const all = [...this.tickets.values()];
         const byState = {};
         Object.values(STATES).forEach(s => byState[s] = all.filter(t => t.state === s).length);
-        return { total: all.length, active: all.filter(t => !t.isComplete()).length, byState, cooldowns: this.cooldowns.size };
+        return { total: all.length, active: all.filter(t => !t.isComplete()).length, byState, cooldowns: this.cooldowns.size, pendingWagers: this.pendingWagers.size };
+    }
+
+    // Store a pending wager when user is sniped in public channel
+    // This will be retrieved when their ticket channel is created
+    storePendingWager(userId, opponentBet, ourBet, sourceChannelId) {
+        this.pendingWagers.set(userId, {
+            opponentBet,
+            ourBet,
+            sourceChannelId,
+            timestamp: Date.now()
+        });
+        logger.info('Stored pending wager', { userId, opponentBet, ourBet });
+    }
+
+    // Retrieve pending wager for a user (called when ticket is created)
+    // Returns the wager data and removes it from pending
+    getPendingWager(userId) {
+        const wager = this.pendingWagers.get(userId);
+        if (!wager) return null;
+
+        // Check if expired
+        if (Date.now() - wager.timestamp > this.pendingWagerExpiryMs) {
+            this.pendingWagers.delete(userId);
+            logger.debug('Pending wager expired', { userId });
+            return null;
+        }
+
+        // Remove from pending (it's being consumed)
+        this.pendingWagers.delete(userId);
+        logger.info('Retrieved pending wager', { userId, ...wager });
+        return wager;
+    }
+
+    // Get any pending wager (for when we don't know user ID from ticket channel name)
+    // Returns the most recent unexpired wager
+    getAnyPendingWager() {
+        const now = Date.now();
+        let latestWager = null;
+        let latestUserId = null;
+
+        for (const [userId, wager] of this.pendingWagers.entries()) {
+            if (now - wager.timestamp > this.pendingWagerExpiryMs) {
+                this.pendingWagers.delete(userId);
+                continue;
+            }
+            if (!latestWager || wager.timestamp > latestWager.timestamp) {
+                latestWager = wager;
+                latestUserId = userId;
+            }
+        }
+
+        if (latestWager && latestUserId) {
+            this.pendingWagers.delete(latestUserId);
+            logger.info('Retrieved latest pending wager', { userId: latestUserId, ...latestWager });
+            return { userId: latestUserId, ...latestWager };
+        }
+        return null;
+    }
+
+    // Clean up expired pending wagers
+    cleanupPendingWagers() {
+        const now = Date.now();
+        for (const [userId, wager] of this.pendingWagers.entries()) {
+            if (now - wager.timestamp > this.pendingWagerExpiryMs) {
+                this.pendingWagers.delete(userId);
+            }
+        }
     }
 }
 
