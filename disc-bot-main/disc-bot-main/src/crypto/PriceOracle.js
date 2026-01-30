@@ -57,7 +57,7 @@ class PriceOracle {
             let price = await this._fetchFromCoinbase(net, fetch);
 
             if (!price) {
-                logger.warn(`Coinbase API failed for ${net}, trying CoinGecko fallback...`);
+                logger.warn(`Coinbase API failed or timed out for ${net}, instant failover to CoinGecko...`);
                 price = await this._fetchFromCoinGecko(net, fetch);
             }
 

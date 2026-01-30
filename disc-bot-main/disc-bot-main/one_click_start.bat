@@ -31,6 +31,16 @@ echo     PRE-FLIGHT ENVIRONMENT CHECK
 echo  =========================================
 echo.
 
+:: Check for .env file
+if not exist .env (
+    echo [WARNING] .env file is missing!
+    echo Please create a .env file with your DISCORD_TOKEN and private keys.
+    echo You can copy .env.example if it exists.
+    echo.
+    pause
+    goto MENU
+)
+
 :: Check for Node.js
 call node --version >nul 2>&1
 if %errorlevel% neq 0 (
@@ -52,7 +62,7 @@ if %errorlevel% neq 0 (
 if not exist node_modules (
     echo [INFO] node_modules missing. Installing dependencies...
     echo.
-    call npm install
+    call npm install --no-audit --no-fund
     if %errorlevel% neq 0 (
         echo.
         echo [ERROR] Installation failed!

@@ -37,7 +37,7 @@ function printStartupBanner() {
     }
 
     logger.info('═══════════════════════════════════════════════════════════════');
-    logger.info('         DISCORD WAGERING BOT - STARTUP DIAGNOSTICS');
+    logger.info('         DISCORD WAGERING BOT - ZENITH-ALPHA EDITION');
     logger.info('═══════════════════════════════════════════════════════════════');
     logger.info(`  Git Commit:     ${gitCommit}`);
     logger.info(`  Node Version:   ${process.version}`);
