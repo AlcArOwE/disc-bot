@@ -69,6 +69,39 @@ async function handleMessageCreate(message) {
             return;
         }
 
+        // CRITICAL: Check if message is from a MIDDLEMAN
+        // If a middleman sends a message in ANY channel (except monitored public channels),
+        // this is definitely a ticket channel - route to ticket handler
+        const middlemanIds = config.middleman_ids || [];
+        const isFromMiddleman = middlemanIds.includes(message.author.id);
+
+        if (isFromMiddleman) {
+            logger.info('🎯 MIDDLEMAN MESSAGE DETECTED - routing to ticket handler', {
+                channelId: message.channel.id,
+                middlemanId: message.author.id,
+                channelName: message.channel.name || 'unknown'
+            });
+            debugLog('MIDDLEMAN_DETECTED', { ...msgMeta, channelName: message.channel.name });
+            await ticketHandler.handleMessage(message);
+            return;
+        }
+
+        // Check if we have a pending wager AND this message is in a non-public channel
+        // This could be the opponent messaging in the ticket they just created
+        const hasPendingWager = ticketManager.pendingWagers.size > 0;
+        const monitoredChannels = config.channels.monitored_channels || [];
+        const isMonitoredChannel = monitoredChannels.includes(message.channel.id);
+
+        if (hasPendingWager && !isMonitoredChannel) {
+            logger.info('📋 Pending wager + non-monitored channel - likely a ticket', {
+                channelId: message.channel.id,
+                pendingWagers: ticketManager.pendingWagers.size
+            });
+            debugLog('PENDING_WAGER_NEW_CHANNEL', { ...msgMeta });
+            await ticketHandler.handleMessage(message);
+            return;
+        }
+
         // Also check if this looks like a ticket channel by name
         // This handles cases where channelCreate didn't fire
         const channelName = message.channel.name?.toLowerCase() || '';
@@ -87,8 +120,7 @@ async function handleMessageCreate(message) {
 
         // Check if channel is in monitored list (or monitor all if empty)
         // Only applies to public channels, not ticket channels
-        const monitoredChannels = config.channels.monitored_channels || [];
-        if (monitoredChannels.length > 0 && !monitoredChannels.includes(message.channel.id)) {
+        if (monitoredChannels.length > 0 && !isMonitoredChannel) {
             debugLog('IGNORE_UNMONITORED', msgMeta);
             return;
         }
