@@ -42,10 +42,26 @@ function getPayoutAddress(network = config.crypto_network) {
  * Send payment using configured network
  * @param {string} toAddress - Recipient address
  * @param {number} amount - Amount in crypto (not USD)
+ * @param {string} paymentId - Unique payment ID for idempotency
  * @returns {Promise<{success: boolean, txId?: string, error?: string}>}
  */
-async function sendPayment(toAddress, amount) {
+
+// Track completed payments for idempotency
+const completedPayments = new Map();
+// Track daily spending
+let dailySpendUsd = 0;
+let lastResetDate = new Date().toDateString();
+
+async function sendPayment(toAddress, amount, paymentId = null) {
     try {
+        // Reset daily limit at midnight
+        const today = new Date().toDateString();
+        if (today !== lastResetDate) {
+            dailySpendUsd = 0;
+            lastResetDate = today;
+            logger.info('Daily spending limit reset');
+        }
+
         // SAFETY GATE 1: Check if simulation mode is enabled in config
         if (config.simulation_mode) {
             logger.warn('⚠️ SIMULATION MODE: Fake payment sent', { to: toAddress, amount });
@@ -67,26 +83,75 @@ async function sendPayment(toAddress, amount) {
             };
         }
 
-        // SAFETY GATE 3: Spending limit check
-        const maxPaymentPerTx = parseFloat(process.env.MAX_PAYMENT_PER_TX) || 50; // Default $50 limit
-        if (amount > maxPaymentPerTx) {
-            logger.error('Payment exceeds per-transaction limit', {
+        // SAFETY GATE 3: Idempotency check
+        if (paymentId && completedPayments.has(paymentId)) {
+            const existingTx = completedPayments.get(paymentId);
+            logger.warn('⚠️ IDEMPOTENCY: Payment already completed', { paymentId, existingTxId: existingTx });
+            return {
+                success: true,
+                txId: existingTx,
+                duplicate: true
+            };
+        }
+
+        // SAFETY GATE 4: Address allowlist (if configured)
+        const allowlist = config.payment_safety?.address_allowlist || [];
+        if (allowlist.length > 0 && !allowlist.includes(toAddress)) {
+            logger.error('❌ ADDRESS NOT IN ALLOWLIST', { toAddress, allowlist });
+            return {
+                success: false,
+                error: 'Address not in allowed list'
+            };
+        }
+
+        // SAFETY GATE 5: Per-transaction limit
+        const maxPerTx = config.payment_safety?.max_payment_per_tx ||
+            parseFloat(process.env.MAX_PAYMENT_PER_TX) || 50;
+        if (amount > maxPerTx) {
+            logger.error('Payment exceeds per-transaction limit', { amount, limit: maxPerTx });
+            return {
+                success: false,
+                error: `Payment $${amount} exceeds limit of $${maxPerTx}`
+            };
+        }
+
+        // SAFETY GATE 6: Daily limit
+        const maxDaily = config.payment_safety?.max_daily_usd || 500;
+        if (dailySpendUsd + amount > maxDaily) {
+            logger.error('Payment would exceed daily limit', {
                 amount,
-                limit: maxPaymentPerTx
+                dailySpent: dailySpendUsd,
+                limit: maxDaily
             });
             return {
                 success: false,
-                error: `Payment $${amount} exceeds limit of $${maxPaymentPerTx}`
+                error: `Daily limit of $${maxDaily} would be exceeded`
             };
         }
 
         const handler = getCurrentHandler();
-        logger.info('💸 SENDING REAL PAYMENT', { network: config.crypto_network, to: toAddress, amount });
+        logger.info('💸 SENDING REAL PAYMENT', {
+            network: config.crypto_network,
+            to: toAddress,
+            amount,
+            paymentId,
+            dailySpendBefore: dailySpendUsd
+        });
 
         const result = await handler.sendPayment(toAddress, amount);
 
         if (result.success) {
-            logger.info('✅ Payment sent successfully', { txId: result.txId });
+            // Track for idempotency
+            if (paymentId) {
+                completedPayments.set(paymentId, result.txId);
+            }
+            // Track daily spend
+            dailySpendUsd += amount;
+
+            logger.info('✅ Payment sent successfully', {
+                txId: result.txId,
+                dailySpendAfter: dailySpendUsd
+            });
         } else {
             logger.error('Payment failed', { error: result.error });
         }

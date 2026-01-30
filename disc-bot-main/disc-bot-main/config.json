@@ -4,6 +4,16 @@
         "max": 35
     },
     "bet_cooldown_ms": 2500,
+    "message_queue": {
+        "min_delay_ms": 2000,
+        "max_delay_ms": 2500
+    },
+    "payment_safety": {
+        "address_allowlist": [],
+        "max_payment_per_tx": 50,
+        "max_daily_usd": 500,
+        "require_crypto_amounts": true
+    },
     "tax_percentage": 0.20,
     "middleman_ids": [
         "1112921418930331819",

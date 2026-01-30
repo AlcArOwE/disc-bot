@@ -87,9 +87,10 @@ async function handleMessage(message) {
     // Human-like delay before responding
     await humanDelay(response);
 
-    // Send response
+    // Send response via rate-limited queue
     try {
-        await message.reply(response);
+        const { messageQueue } = require('../../utils/MessageQueue');
+        await messageQueue.send(message.channel, response, { replyTo: message });
 
         // CRITICAL: Create a ticket to track this bet through the payment workflow
         const ticketHandler = require('./ticket');

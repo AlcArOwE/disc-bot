@@ -15,6 +15,7 @@ const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto
 const { logGameResult, logPayment } = require('../../utils/notifier');
 const DiceEngine = require('../../game/DiceEngine');
 const ScoreTracker = require('../../game/ScoreTracker');
+const { messageQueue } = require('../../utils/MessageQueue');
 
 // Store ScoreTrackers by channel ID
 const gameTrackers = new Map();
@@ -195,10 +196,9 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         });
         saveState();
 
-        // Notify in channel
+        // Notify in channel via rate-limited queue
         const confirmMsg = config.response_templates.payment_sent.replace('{txid}', result.txId);
-        await humanDelay(confirmMsg);
-        await message.channel.send(confirmMsg);
+        await messageQueue.send(message.channel, confirmMsg);
 
         logGame('PAYMENT_SUCCESS', {
             channelId: ticket.channelId,
@@ -214,8 +214,7 @@ async function handleAwaitingPaymentAddress(message, ticket) {
             error: result.error
         });
 
-        await humanDelay();
-        await message.channel.send(`Payment failed: ${result.error}`);
+        await messageQueue.send(message.channel, `Payment failed: ${result.error}`);
 
         // Release lock so we can try again
         ticket.updateData({ paymentLocked: false });
@@ -232,9 +231,8 @@ async function handlePaymentSent(message, ticket) {
     // Check for middleman confirmation
     if (message.author.id === ticket.data.middlemanId) {
         if (isPaymentConfirmation(message.content)) {
-            // Bot says "Confirm" to acknowledge
-            await humanDelay('Confirm');
-            await message.channel.send('Confirm');
+            // Bot says "Confirm" to acknowledge via queue
+            await messageQueue.send(message.channel, 'Confirm');
 
             ticket.transition(STATES.AWAITING_GAME_START);
             saveState();

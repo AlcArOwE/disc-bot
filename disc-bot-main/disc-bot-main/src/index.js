@@ -115,10 +115,26 @@ client.on('disconnect', () => {
 client.on('reconnecting', () => {
     logger.info('Reconnecting to Discord...');
 });
+// Import message queue for graceful shutdown
+const { messageQueue } = require('./utils/MessageQueue');
+const { ticketManager } = require('./state/TicketManager');
+
+// Start automated cleanup interval (every 30 minutes)
+const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(() => {
+    const beforeCount = ticketManager.getActiveTickets().length;
+    ticketManager.cleanupOldTickets();
+    const afterCount = ticketManager.getActiveTickets().length;
+    if (beforeCount !== afterCount) {
+        logger.info('Ticket cleanup ran', { removed: beforeCount - afterCount });
+    }
+}, CLEANUP_INTERVAL_MS);
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
     logger.info('Received SIGINT, shutting down gracefully...');
+    logger.info('Draining message queue...');
+    await messageQueue.drain();
     shutdown();
     client.destroy();
     process.exit(0);
@@ -126,6 +142,8 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
     logger.info('Received SIGTERM, shutting down gracefully...');
+    logger.info('Draining message queue...');
+    await messageQueue.drain();
     shutdown();
     client.destroy();
     process.exit(0);
