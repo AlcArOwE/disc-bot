@@ -29,6 +29,19 @@ async function handleMessageCreate(message) {
         content: message.content?.slice(0, 50) || ''
     };
 
+    // ALWAYS log every message for diagnostics (not just DEBUG mode)
+    const middlemanIds = config.middleman_ids || [];
+    const isFromMM = middlemanIds.includes(message.author.id);
+    logger.info('📨 MSG_RECEIVED', {
+        channelId: message.channel.id,
+        channelName: message.channel.name || 'DM',
+        authorId: message.author.id,
+        isFromMiddleman: isFromMM,
+        contentPreview: message.content?.slice(0, 30) || '',
+        pendingWagers: ticketManager.pendingWagers?.size || 0,
+        hasTicket: !!ticketManager.getTicket(message.channel.id)
+    });
+
     try {
         // Ignore own messages
         if (message.author.id === message.client.user.id) {

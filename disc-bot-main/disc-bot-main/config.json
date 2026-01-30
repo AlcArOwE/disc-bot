@@ -61,6 +61,6 @@
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
         "vouch_win": "+vouch won ${amount} vs {opponent} mm {middleman}",
-        "payment_sent": "Sent! TXID: {txid}"
+        "payment_sent": "Sent ${amount}! TXID: {txid}"
     }
 }

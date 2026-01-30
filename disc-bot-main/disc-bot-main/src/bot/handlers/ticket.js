@@ -318,7 +318,9 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         saveState();
 
         // Notify in channel via rate-limited queue
-        const confirmMsg = config.response_templates.payment_sent.replace('{txid}', result.txId);
+        const confirmMsg = config.response_templates.payment_sent
+            .replace('{txid}', result.txId)
+            .replace('{amount}', amount.toFixed(2));
         await messageQueue.send(message.channel, confirmMsg);
 
         logGame('PAYMENT_SUCCESS', {
