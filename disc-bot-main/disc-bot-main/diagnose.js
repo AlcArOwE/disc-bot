@@ -6,6 +6,9 @@
 const fs = require('fs');
 const path = require('path');
 
+// Load environment variables for accurate diagnostic
+require('dotenv').config();
+
 console.log('='.repeat(60));
 console.log('DISC-BOT DIAGNOSTIC REPORT');
 console.log('='.repeat(60));
