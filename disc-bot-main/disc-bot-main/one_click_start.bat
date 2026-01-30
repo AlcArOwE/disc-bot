@@ -1,4 +1,5 @@
 @echo off
+setlocal
 title Discord Bot Launcher
 cd /d "%~dp0"
 
@@ -14,6 +15,7 @@ echo     2. Run Diagnostics
 echo     3. Update from GitHub
 echo     4. Exit
 echo.
+set "choice="
 set /p choice=Enter choice (1-4): 
 
 if "%choice%"=="1" goto RUN_BOT
@@ -42,6 +44,7 @@ goto MENU
 
 :UPDATE
 cls
+echo Updating from GitHub...
 git pull origin main
 pause
 goto MENU
