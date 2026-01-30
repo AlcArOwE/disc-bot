@@ -67,6 +67,15 @@ For development with auto-restart:
 npm run dev
 ```
 
+## 📋 Diagnostic & Verification
+
+The bot includes a multi-layered diagnostic suite to ensure 100% production readiness:
+
+- **System Check**: `node diagnose.js` (Verifies .env, config, and Discord connectivity)
+- **Logic Certification**: `node super_diagnostic.js` (Bit-Perfect simulation of game flow & state machine)
+
+Always run `node diagnose.js` before starting the bot to catch any configuration issues early.
+
 ## How It Works
 
 ### Bet Detection
