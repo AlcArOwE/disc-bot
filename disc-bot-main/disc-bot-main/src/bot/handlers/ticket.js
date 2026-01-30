@@ -501,10 +501,15 @@ async function handleGameComplete(channel, ticket, tracker) {
     logGameResult(ticket.channelId, tracker.winner, profit);
 
     if (didWin) {
-        // Post payout address
+        // Post payout address with amount owed
         const payoutAddr = getPayoutAddress();
+        const amountOwed = ticket.data.opponentBet;
+        const network = config.crypto_network || 'LTC';
+
         await humanDelay();
-        await channel.send(`GG! Send payout to: ${payoutAddr}`);
+        await channel.send(`GG! 🎉 Send $${amountOwed.toFixed(2)} (${network}) to:`);
+        await humanDelay();
+        await channel.send(`\`${payoutAddr}\``);
 
         // Post vouch after a delay
         await new Promise(r => setTimeout(r, 5000));
