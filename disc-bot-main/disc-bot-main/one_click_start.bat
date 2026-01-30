@@ -15,8 +15,8 @@ echo     2. Run Diagnostics
 echo     3. Update from GitHub
 echo     4. Exit
 echo.
-set "choice="
-set /p choice=Enter choice (1-4): 
+choice /c 1234 /n /m "Enter choice (1-4): "
+set choice=%errorlevel%
 
 if "%choice%"=="1" goto RUN_BOT
 if "%choice%"=="2" goto DIAG

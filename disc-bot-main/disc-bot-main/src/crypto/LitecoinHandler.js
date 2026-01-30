@@ -85,7 +85,7 @@ class LitecoinHandler {
                     const HttpsProxyAgent = require('https-proxy-agent');
                     fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
                 } catch (e) {
-                    logger.debug('Non-critical error fetching UTXOs (likely 404/Empty)', { error: e.message });
+                    logger.debug('Proxy agent not available for LTC UTXOs', { error: e.message });
                 }
             }
 
@@ -191,7 +191,7 @@ class LitecoinHandler {
                 const HttpsProxyAgent = require('https-proxy-agent');
                 fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
             } catch (e) {
-                logger.debug('Broadcast response parsing error (potentially success without JSON)', { error: e.message });
+                logger.debug('Proxy agent not available for LTC broadcast', { error: e.message });
             }
         }
 
