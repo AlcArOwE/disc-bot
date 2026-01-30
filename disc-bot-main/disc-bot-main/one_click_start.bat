@@ -1,121 +1,88 @@
 @echo off
-setlocal enabledelayedexpansion
-title Discord Wagering Bot [REPAIRED]
+title Discord Wagering Bot
 color 0B
 
-:: ==============================================================
-::  DISCORD WAGERING BOT - PRODUCTION SHELL (v2.1)
-::  Author: Antigravity
-:: ==============================================================
-
-:INIT
 cd /d "%~dp0"
-set RESTART_COUNT=0
 
 :MENU
 cls
 echo.
 echo  ==============================================================
-echo   DISCORD WAGERING BOT - ONE-CLICK PRODUCTION SHELL
+echo   DISCORD WAGERING BOT - PRODUCTION SHELL
 echo  ==============================================================
 echo.
-echo   [1] START BOT (with Auto-Restart)
-echo   [2] RUN DIAGNOSTICS (Sanity Check)
-echo   [3] UPDATE PROJECT (Git Sync)
-echo   [4] EDIT CONFIGURATION (.env)
-echo   [5] CLEAR CACHE (node_modules)
-echo   [6] EXIT
+echo   1 = START BOT
+echo   2 = RUN DIAGNOSTICS
+echo   3 = UPDATE FROM GITHUB
+echo   4 = EDIT .env
+echo   5 = REINSTALL DEPENDENCIES
+echo   6 = EXIT
 echo.
+choice /c 123456 /n /m "Press a key [1-6]: "
 
-:: Use CHOICE command for robust input (Standard since Win Vista)
-choice /c 123456 /n /m " Choose an option [1-6]: "
-set opt=%errorlevel%
+if errorlevel 6 goto EXIT_SCRIPT
+if errorlevel 5 goto CLEAN
+if errorlevel 4 goto ENV_EDIT
+if errorlevel 3 goto UPDATE
+if errorlevel 2 goto DIAGNOSTICS
+if errorlevel 1 goto START_BOT
 
-if "%opt%"=="1" goto START_BOT
-if "%opt%"=="2" goto DIAGNOSTICS
-if "%opt%"=="3" goto UPDATE
-if "%opt%"=="4" goto ENV_EDIT
-if "%opt%"=="5" goto CLEAN
-if "%opt%"=="6" exit
 goto MENU
 
 :START_BOT
 cls
 echo.
-echo  [1/3] Verifying Environment...
+echo  Checking prerequisites...
+echo.
 if not exist .env (
-    color 0C
-    echo ERROR: .env file missing. Run option [4] first.
+    echo  [ERROR] .env file is missing!
+    echo  Please create a .env file with your DISCORD_TOKEN.
     pause
-    color 0B
     goto MENU
 )
-
-echo  [2/3] Checking Dependencies...
 if not exist node_modules (
-    echo [INFO] Installing dependencies (this may take a minute)...
-    call npm install --silent
+    echo  [INFO] Installing dependencies...
+    call npm install
 )
-
-echo  [3/3] Launching Bot...
 echo.
 echo  ==============================================================
-echo   BOT STATUS: ACTIVE
-echo   - To stop the bot, close this window or press Ctrl+C.
+echo   BOT IS NOW RUNNING - Close this window to stop.
 echo  ==============================================================
 echo.
-
-:BOT_LOOP
-set /a RESTART_COUNT+=1
+:LOOP
 node src/index.js
 echo.
-echo  [WARNING] Bot crashed or stopped at %TIME%
-echo  [STATS] Total restarts in this session: %RESTART_COUNT%
-echo.
-echo  Restarting in 5 seconds... (Press Ctrl+C to abort)
-timeout /t 5 >nul
-goto BOT_LOOP
+echo  [!] Bot stopped. Restarting in 5 seconds...
+timeout /t 5 /nobreak >nul
+goto LOOP
 
 :DIAGNOSTICS
 cls
-echo.
-echo  ==============================================================
-echo   SYSTEM DIAGNOSTICS
-echo  ==============================================================
-echo.
 node diagnose.js
-echo.
-echo  Diagnostics complete.
 pause
 goto MENU
 
 :UPDATE
 cls
-echo.
-echo  [INFO] Fetching latest changes from GitHub...
+echo  Updating from GitHub...
 call git fetch --all
 call git reset --hard origin/main
-echo.
-echo  [SUCCESS] Bot updated to latest perfection state.
+echo  Done!
 pause
 goto MENU
 
 :ENV_EDIT
-echo.
-echo  [INFO] Opening .env in Notepad...
 start notepad .env
 goto MENU
 
 :CLEAN
-echo.
-echo  [WARNING] This will delete node_modules and re-install.
-echo  Are you sure?
-choice /c YN /m " (Y/N): "
-if errorlevel 2 goto MENU
-
-echo Cleaning...
-rmdir /s /q node_modules
+cls
+echo  Reinstalling dependencies...
+if exist node_modules rmdir /s /q node_modules
 call npm install
-echo Cleaned and Re-installed!
+echo  Done!
 pause
 goto MENU
+
+:EXIT_SCRIPT
+exit
