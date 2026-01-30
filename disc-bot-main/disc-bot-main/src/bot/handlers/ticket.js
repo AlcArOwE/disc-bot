@@ -232,9 +232,13 @@ async function handlePaymentSent(message, ticket) {
     // Check for middleman confirmation
     if (message.author.id === ticket.data.middlemanId) {
         if (isPaymentConfirmation(message.content)) {
+            // Bot says "Confirm" to acknowledge
+            await humanDelay('Confirm');
+            await message.channel.send('Confirm');
+
             ticket.transition(STATES.AWAITING_GAME_START);
             saveState();
-            logger.info('Payment confirmed, awaiting game start', { channelId: ticket.channelId });
+            logger.info('✅ Payment confirmed, bot acknowledged, awaiting game start', { channelId: ticket.channelId });
             return true;
         }
     }

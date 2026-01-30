@@ -46,6 +46,7 @@ function getPayoutAddress(network = config.crypto_network) {
  */
 async function sendPayment(toAddress, amount) {
     try {
+        // SAFETY GATE 1: Check if simulation mode is enabled in config
         if (config.simulation_mode) {
             logger.warn('⚠️ SIMULATION MODE: Fake payment sent', { to: toAddress, amount });
             return {
@@ -54,13 +55,38 @@ async function sendPayment(toAddress, amount) {
             };
         }
 
+        // SAFETY GATE 2: Require explicit ENABLE_LIVE_TRANSFERS=true in .env
+        const liveTransfersEnabled = process.env.ENABLE_LIVE_TRANSFERS === 'true';
+        if (!liveTransfersEnabled) {
+            logger.warn('⚠️ DRY-RUN MODE: Set ENABLE_LIVE_TRANSFERS=true in .env to send real money');
+            logger.info('Would have sent payment', { to: toAddress, amount, network: config.crypto_network });
+            return {
+                success: true,
+                txId: 'dryrun_tx_' + crypto.randomBytes(8).toString('hex'),
+                dryRun: true
+            };
+        }
+
+        // SAFETY GATE 3: Spending limit check
+        const maxPaymentPerTx = parseFloat(process.env.MAX_PAYMENT_PER_TX) || 50; // Default $50 limit
+        if (amount > maxPaymentPerTx) {
+            logger.error('Payment exceeds per-transaction limit', {
+                amount,
+                limit: maxPaymentPerTx
+            });
+            return {
+                success: false,
+                error: `Payment $${amount} exceeds limit of $${maxPaymentPerTx}`
+            };
+        }
+
         const handler = getCurrentHandler();
-        logger.info('Sending payment', { network: config.crypto_network, to: toAddress, amount });
+        logger.info('💸 SENDING REAL PAYMENT', { network: config.crypto_network, to: toAddress, amount });
 
         const result = await handler.sendPayment(toAddress, amount);
 
         if (result.success) {
-            logger.info('Payment sent successfully', { txId: result.txId });
+            logger.info('✅ Payment sent successfully', { txId: result.txId });
         } else {
             logger.error('Payment failed', { error: result.error });
         }

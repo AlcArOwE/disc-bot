@@ -50,8 +50,8 @@ function getTypingDelay(message) {
  * @returns {Promise<void>}
  */
 async function humanDelay(message = '') {
-    // Maximum speed delay (100-300ms total)
-    const thinkDelay = getRandomDelay(100, 300);
+    // Safe response delay (2.0-2.5 seconds to avoid Discord spam detection)
+    const thinkDelay = getRandomDelay(2000, 2500);
     await sleep(thinkDelay);
 
     // Typing delay based on message length
@@ -75,7 +75,8 @@ async function quickDelay() {
  * @returns {Promise<void>}
  */
 async function gameActionDelay() {
-    const delay = getRandomDelay(100, 300);
+    // Safe game action delay (1.0-1.5 seconds)
+    const delay = getRandomDelay(1000, 1500);
     await sleep(delay);
 }
 

@@ -3,7 +3,7 @@
         "min": 2,
         "max": 35
     },
-    "bet_cooldown_ms": 1000,
+    "bet_cooldown_ms": 2500,
     "tax_percentage": 0.20,
     "middleman_ids": [
         "1112921418930331819",
@@ -41,10 +41,10 @@
         "dice_command": "-roll"
     },
     "delays": {
-        "typing_min_ms": 50,
-        "typing_max_ms": 150,
-        "response_base_ms": 50,
-        "response_per_char_ms": 2
+        "typing_min_ms": 800,
+        "typing_max_ms": 1500,
+        "response_base_ms": 500,
+        "response_per_char_ms": 15
     },
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",

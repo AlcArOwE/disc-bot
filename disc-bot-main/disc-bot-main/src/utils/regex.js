@@ -33,7 +33,13 @@ const PAYMENT_CONFIRM_PATTERNS = [
     /confirmed?/i,
     /received?/i,
     /got\s*(?:it|payment)/i,
-    /paid/i
+    /paid/i,
+    /both\s*(?:paid|sent|received)/i,  // "both paid", "both sent"
+    /payments?\s*(?:confirmed|received)/i,  // "payment confirmed"
+    /gl\b/i,  // "gl" (good luck - often said after confirmation)
+    /good\s*luck/i,  // "good luck"
+    /start\s*(?:the\s*)?game/i,  // "start the game"
+    /ready\s*to\s*(?:go|start|play)/i  // "ready to go"
 ];
 
 /**
