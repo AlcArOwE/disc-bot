@@ -88,8 +88,8 @@ function extractCryptoAddress(message, network) {
     // Split message into words and find matching address
     const words = message.split(/\s+/);
     for (const word of words) {
-        // Remove formatting and common punctuation
-        const cleaned = word.replace(/[<>.,;:"'!?]/g, '');
+        // Remove formatting, backticks, and common punctuation
+        const cleaned = word.replace(/[`<>.,;:"'!?()[\]{}]/g, '');
         if (pattern.test(cleaned)) {
             return cleaned;
         }
