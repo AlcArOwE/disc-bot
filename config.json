@@ -22,6 +22,16 @@
         "922823704776441906",
         "961956566939086858"
     ],
+    "dice_bot_ids": [],
+    "auto_advertise": {
+        "enabled": true,
+        "interval_ms": 15000,
+        "message": [
+            "Anyone 5v5? (dice,ft5,LTC)",
+            "Active and ready! 5v5 anyone?",
+            "LTC Dice 5v5 - Hit me up!"
+        ]
+    },
     "channels": {
         "vouch_channel_id": "1258789148702146700",
         "monitored_channels": []

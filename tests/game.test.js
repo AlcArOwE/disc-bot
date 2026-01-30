@@ -133,5 +133,12 @@ describe('ScoreTracker', () => {
             assert.strictEqual(restored.scores.opponent, 0);
             assert.strictEqual(restored.rounds.length, 2);
         });
+
+        it('should persist pendingBotRoll', () => {
+            tracker.pendingBotRoll = 5;
+            const json = tracker.toJSON();
+            const restored = ScoreTracker.fromJSON(json);
+            assert.strictEqual(restored.pendingBotRoll, 5);
+        });
     });
 });

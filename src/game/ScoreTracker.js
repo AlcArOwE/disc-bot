@@ -21,6 +21,7 @@ class ScoreTracker {
         };
 
         this.rounds = [];
+        this.pendingBotRoll = null; // Stores bot roll if waiting for opponent
         this.startedAt = Date.now();
         this.completedAt = null;
         this.winner = null;
@@ -177,6 +178,7 @@ class ScoreTracker {
             botWinsTies: this.botWinsTies,
             scores: this.scores,
             rounds: this.rounds,
+            pendingBotRoll: this.pendingBotRoll,
             startedAt: this.startedAt,
             completedAt: this.completedAt,
             winner: this.winner
@@ -193,6 +195,7 @@ class ScoreTracker {
         tracker.botWinsTies = json.botWinsTies;
         tracker.scores = json.scores;
         tracker.rounds = json.rounds;
+        tracker.pendingBotRoll = json.pendingBotRoll || null;
         tracker.startedAt = json.startedAt;
         tracker.completedAt = json.completedAt;
         tracker.winner = json.winner;

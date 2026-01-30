@@ -18,8 +18,8 @@ const CRYPTO_PATTERNS = {
 };
 
 // Pattern to detect middleman starting the game
-// e.g., "@User1 first, @User2 second" or "User1 goes first"
-const GAME_START_PATTERN = /<@!?(\d+)>\s*(?:goes?\s*)?first|first:?\s*<@!?(\d+)>/i;
+// e.g., "@User1 first, @User2 second", "User1 goes first", "start", "roll", "begin"
+const GAME_START_PATTERN = /(?:<@!?(\d+)>\s*(?:goes?\s*)?first|first:?\s*<@!?(\d+)>)|(?:^(?:start|begin|roll|gogogo|play)\s*$)/i;
 
 // Pattern to detect dice roll results from dice bots
 // Matches common formats like "rolled a 6", "🎲 6", "[6]"

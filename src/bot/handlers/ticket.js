@@ -7,11 +7,13 @@ const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { STATES } = require('../../state/StateMachine');
 const { saveState } = require('../../state/persistence');
-const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation } = require('../../utils/regex');
+const { extractCryptoAddress, extractGameStart, extractDiceResult, isPaymentConfirmation, extractBetAmounts } = require('../../utils/regex');
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, gameActionDelay } = require('../../utils/delay');
+const { channelLock } = require('../../utils/ChannelLock');
+const { calculateOurBet } = require('../../utils/betting');
 const { logger, logGame } = require('../../utils/logger');
-const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
+const { sendPayment, getPayoutAddress, validateAddress, getBalance } = require('../../crypto');
 const { logGameResult, logPayment } = require('../../utils/notifier');
 const DiceEngine = require('../../game/DiceEngine');
 const ScoreTracker = require('../../game/ScoreTracker');
@@ -42,6 +44,24 @@ async function handleMessage(message) {
         return handlePotentialNewTicket(message);
     }
 
+    // Latching Logic: If ticket exists but has no opponent (e.g. auto-created),
+    // try to latch onto the first user who speaks
+    if (!ticket.data.opponentId) {
+        const latched = await handleLatchOpponent(message, ticket);
+        if (latched) {
+            // If we just latched, we can continue processing or stop here.
+            // Continuing allows them to trigger commands immediately.
+            logger.info('Latched onto opponent', { channelId, userId: message.author.id });
+        }
+    }
+
+    // 0 Bet Handling: If latched but bet is 0 (failed history scan), listen for bet here
+    if (ticket.data.opponentId === message.author.id && ticket.data.opponentBet === 0) {
+        await handleMissingBet(message, ticket);
+        // Continue to main logic in case they sent "10v10 address" combined (unlikely but possible)
+        // or just to let state machine run
+    }
+
     // Route to appropriate handler based on state
     switch (ticket.getState()) {
         case STATES.AWAITING_TICKET:
@@ -67,14 +87,100 @@ async function handleMessage(message) {
 async function handlePotentialNewTicket(message) {
     // Check if channel name looks like a ticket
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    if (!channelName.includes('ticket') && !channelName.includes('wager')) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    // Create ticket with 0 bet initially (opponentId will be set by latch logic below)
+    // We pass null for opponentId first to let handleLatchOpponent handle validation
+    const ticket = createTicket(message.channel.id, null, 0, 0);
+
+    // Attempt latch immediately
+    return await handleLatchOpponent(message, ticket, true);
+}
+
+/**
+ * Attempt to latch onto a user as the opponent
+ * @param {Message} message
+ * @param {TicketStateMachine} ticket
+ * @param {boolean} isNew - If true, this is a fresh ticket
+ */
+async function handleLatchOpponent(message, ticket, isNew = false) {
+    const userId = message.author.id;
+
+    // Ignore bots and middlemen from latching
+    if (message.author.bot || isMiddleman(userId)) {
+        return false;
+    }
+
+    // Update ticket with opponent
+    ticket.updateData({ opponentId: userId });
+
+    // Update TicketManager index manually since we modified data directly
+    // (createTicket usually handles this, but here we might be updating an existing one)
+    ticketManager.userIndex.set(userId, ticket);
+    ticketManager.setCooldown(userId);
+
+    // Auto-detect bet from history
+    let autoBetFound = false;
+    try {
+        const messages = await message.channel.messages.fetch({ limit: 20 });
+        const userMsgs = messages.filter(m => m.author.id === userId);
+
+        for (const msg of userMsgs.values()) {
+            const betData = extractBetAmounts(msg.content);
+            if (betData) {
+                const opponentBet = betData.opponent;
+                const ourBet = parseFloat(calculateOurBet(opponentBet));
+
+                // Check balance before accepting
+                const balanceCheck = await getBalance();
+                // 0.001 buffer for fees
+                if (balanceCheck.balance < (ourBet + 0.001) && !config.simulation_mode) {
+                    logger.warn('Insufficient balance to accept bet', { balance: balanceCheck.balance, required: ourBet });
+                    await humanDelay();
+                    await message.reply(`⚠️ Cannot accept bet: Insufficient funds in wallet.`);
+                    return false; // Abort latching
+                }
+
+                ticket.updateData({
+                    opponentBet,
+                    ourBet
+                });
+                autoBetFound = true;
+                logger.info('Auto-detected bet from history', { channelId: message.channel.id, opponentBet, ourBet });
+                break;
+            }
+        }
+    } catch (e) {
+        logger.warn('Failed to scan history for bets', { error: e.message });
+    }
+
+    // Double check if we latched but didn't find bet -> we might accept 0 bet and prompt?
+    // User requested "robustness". If we prompt, we should check balance LATER when user replies.
+    // For now, if auto-found, we validated.
+
+    saveState();
+
+    logger.info('Latched onto opponent in ticket channel', {
+        channelId: message.channel.id,
+        userId,
+        autoBetFound
+    });
+
+    // Notify
+    if (isNew || !ticket.data.announcedLatch) {
+        await humanDelay();
+        if (autoBetFound) {
+            await message.reply(`Ticket initialized with **$${ticket.data.opponentBet} vs $${ticket.data.ourBet}**. Waiting for middleman.`);
+        } else {
+            await message.reply('Ticket initialized. Please state your wager (e.g. "10v10").');
+        }
+        ticket.updateData({ announcedLatch: true });
+        saveState();
+    }
+
+    return true;
 }
 
 /**
@@ -198,6 +304,8 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         // Notify in channel
         const confirmMsg = config.response_templates.payment_sent.replace('{txid}', result.txId);
         await humanDelay(confirmMsg);
+
+        await channelLock.acquire(ticket.channelId);
         await message.channel.send(confirmMsg);
 
         logGame('PAYMENT_SUCCESS', {
@@ -274,6 +382,7 @@ async function handleAwaitingGameStart(message, ticket) {
     // If we go first, roll dice
     if (botGoesFirst) {
         await gameActionDelay();
+        // rollDice handles locking internally
         await rollDice(message.channel, ticket);
     }
 
@@ -284,30 +393,43 @@ async function handleAwaitingGameStart(message, ticket) {
  * Handle game in progress state
  */
 async function handleGameInProgress(message, ticket) {
-    const tracker = gameTrackers.get(ticket.channelId);
+    let tracker = gameTrackers.get(ticket.channelId);
+
+    // Restore tracker from state if missing (crash recovery)
+    if (!tracker && ticket.data.trackerState) {
+        try {
+            tracker = ScoreTracker.fromJSON(ticket.data.trackerState);
+            gameTrackers.set(ticket.channelId, tracker);
+            logger.info('Restored score tracker from state', { channelId: ticket.channelId });
+        } catch (e) {
+            logger.error('Failed to restore tracker', { error: e.message });
+        }
+    }
+
     if (!tracker) {
         logger.error('No tracker for game', { channelId: ticket.channelId });
         return false;
     }
 
-    // Check if it's our turn to respond to a dice roll
-    // This depends on the specific dice bot being used
-
-    // Option 1: If opponent just rolled, we see their result and roll ours
+    // Option 1: Opponent rolled (or dice bot for opponent)
+    // We assume any roll not from us is the opponent's,
+    // unless strictly filtered by isDiceBot + mention check (TODO)
     const opponentRoll = extractDiceResult(message.content);
     if (opponentRoll && message.author.id !== message.client.user.id) {
-        // Record their roll and do our roll
         await gameActionDelay();
         await rollDice(message.channel, ticket, opponentRoll, tracker);
         return true;
     }
 
-    // Option 2: If middleman asks us to roll
+    // Option 2: Middleman forces a roll (e.g. if we stalled)
     if (message.author.id === ticket.data.middlemanId) {
         const content = message.content.toLowerCase();
         if (content.includes('roll') || content.includes('dice') || content.includes('your turn')) {
-            await gameActionDelay();
-            await rollDice(message.channel, ticket, null, tracker);
+            // Only roll if we haven't already committed a roll
+            if (!tracker.pendingBotRoll) {
+                await gameActionDelay();
+                await rollDice(message.channel, ticket, null, tracker);
+            }
             return true;
         }
     }
@@ -320,35 +442,78 @@ async function handleGameInProgress(message, ticket) {
  */
 async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
     if (!tracker) {
-        tracker = gameTrackers.get(ticket.channelId);
+        tracker = gameTrackers.get(ticket.channelId) ||
+                  (ticket.data.trackerState ? ScoreTracker.fromJSON(ticket.data.trackerState) : null);
+        if (tracker) gameTrackers.set(ticket.channelId, tracker);
     }
 
-    // Roll our dice
-    const botRoll = DiceEngine.roll();
+    if (!tracker) return;
 
-    // Send dice command/result
-    const diceCmd = config.game_settings.dice_command;
-    await channel.send(diceCmd);
+    // SCENARIO 1: We are initiating the roll (waiting for opponent)
+    if (opponentRoll === null) {
+        // Generate and store our roll
+        const botRoll = DiceEngine.roll();
+        tracker.pendingBotRoll = botRoll;
 
-    // If we have opponent's roll, record the round
-    if (opponentRoll !== null && tracker) {
-        await humanDelay();
+        // Persist state immediately
+        ticket.updateData({
+            trackerState: tracker.toJSON()
+        });
+        await saveState();
 
-        const result = tracker.recordRound(botRoll, opponentRoll);
+        // Announce our roll
+        // We do NOT send the dice command to avoid confusion if we are the authority
+        const rollMsg = `I rolled ${DiceEngine.formatResult(botRoll)}`;
 
-        // Update ticket with current scores
-        ticket.updateData({ gameScores: tracker.scores });
-        saveState();
+        await channelLock.acquire(ticket.channelId);
+        await channel.send(rollMsg);
 
-        // Announce round result
-        const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
-        await humanDelay(roundMsg);
-        await channel.send(roundMsg);
+        logger.info('Bot rolled (pending)', { channelId: ticket.channelId, roll: botRoll });
+        return;
+    }
 
-        // Check for game completion
-        if (result.gameOver) {
-            await handleGameComplete(channel, ticket, tracker);
-        }
+    // SCENARIO 2: We are responding to opponent's roll
+    let botRoll;
+    if (tracker.pendingBotRoll) {
+        // Use the committed roll
+        botRoll = tracker.pendingBotRoll;
+        tracker.pendingBotRoll = null; // Clear it
+    } else {
+        // We generate a new roll now (simultaneous or they went first)
+        botRoll = DiceEngine.roll();
+    }
+
+    const result = tracker.recordRound(botRoll, opponentRoll);
+
+    // Update ticket state with full tracker data
+    ticket.updateData({
+        gameScores: tracker.scores,
+        trackerState: tracker.toJSON()
+    });
+    await saveState();
+
+    // Announce round result
+    const roundMsg = `${DiceEngine.formatResult(botRoll)} vs ${DiceEngine.formatResult(opponentRoll)} - ${result.roundWinner === 'bot' ? 'I win!' : 'You win!'} (${tracker.getFormattedScore()})`;
+    await humanDelay(roundMsg);
+
+    await channelLock.acquire(ticket.channelId);
+    await channel.send(roundMsg);
+
+    logger.info('Round complete', {
+        channelId: ticket.channelId,
+        botRoll,
+        opponentRoll,
+        winner: result.roundWinner
+    });
+
+    // Check for game completion
+    if (result.gameOver) {
+        await handleGameComplete(channel, ticket, tracker);
+    } else {
+        // Game continues - Immediately roll for next round to speed up play
+        await gameActionDelay();
+        // Recursive call to initiate next round (Scenario 1)
+        await rollDice(channel, ticket, null, tracker);
     }
 }
 
@@ -356,13 +521,15 @@ async function rollDice(channel, ticket, opponentRoll = null, tracker = null) {
  * Handle game completion
  */
 async function handleGameComplete(channel, ticket, tracker) {
-    ticket.transition(STATES.GAME_COMPLETE, {
+    const didWin = tracker.didBotWin();
+    const nextState = didWin ? STATES.AWAITING_PAYOUT : STATES.GAME_COMPLETE;
+
+    ticket.transition(nextState, {
         winner: tracker.winner,
-        gameScores: tracker.scores
+        gameScores: tracker.scores,
+        gameEndedAt: Date.now()
     });
     saveState();
-
-    const didWin = tracker.didBotWin();
 
     logGame('GAME_RESULT', {
         channelId: ticket.channelId,
@@ -379,19 +546,20 @@ async function handleGameComplete(channel, ticket, tracker) {
         // Post payout address
         const payoutAddr = getPayoutAddress();
         await humanDelay();
+        await channelLock.acquire(ticket.channelId);
         await channel.send(`GG! Send payout to: ${payoutAddr}`);
 
-        // Post vouch after a delay
-        await new Promise(r => setTimeout(r, 5000));
-        await postVouch(channel.client, ticket);
+        // Note: We do NOT vouch here. PayoutMonitor will vouch when money is received.
+        // We keep the ticket active in manager so monitor can find it.
     } else {
         await humanDelay();
+        await channelLock.acquire(ticket.channelId);
         await channel.send('GG, well played!');
-    }
 
-    // Clean up
-    gameTrackers.delete(ticket.channelId);
-    ticketManager.removeTicket(ticket.channelId);
+        // Clean up immediately on loss
+        gameTrackers.delete(ticket.channelId);
+        ticketManager.removeTicket(ticket.channelId);
+    }
 }
 
 /**
@@ -441,23 +609,74 @@ async function postVouch(client, ticket) {
 }
 
 /**
+ * Handle case where bet is 0 (we prompted user to state wager)
+ */
+async function handleMissingBet(message, ticket) {
+    const betData = extractBetAmounts(message.content);
+    if (!betData) return;
+
+    const opponentBet = betData.opponent;
+    const ourBet = parseFloat(calculateOurBet(opponentBet));
+
+    // Check balance
+    const balanceCheck = await getBalance();
+    if (balanceCheck.balance < (ourBet + 0.001) && !config.simulation_mode) {
+        await message.reply(`⚠️ Cannot accept bet: Insufficient funds.`);
+        return;
+    }
+
+    // Update ticket
+    ticket.updateData({
+        opponentBet,
+        ourBet
+    });
+    saveState();
+
+    logger.info('Bet detected from user response', {
+        channelId: message.channel.id,
+        opponentBet,
+        ourBet
+    });
+
+    await humanDelay();
+    await message.reply(`Bet updated: **$${opponentBet} vs $${ourBet}**. Waiting for middleman.`);
+}
+
+/**
  * Create a new ticket for a channel
  * Since the opponent already sent their bet message, we skip AWAITING_TICKET
  * and go directly to AWAITING_MIDDLEMAN state.
  */
 function createTicket(channelId, opponentId, opponentBet, ourBet) {
-    const ticket = ticketManager.createTicket(channelId, {
-        opponentId,
-        opponentBet,
-        ourBet
-    });
+    // Check if ticket exists (e.g. from latching) and update it
+    let ticket = ticketManager.getTicket(channelId);
 
-    // CRITICAL: Opponent already sent bet, so skip AWAITING_TICKET state
-    // and go directly to waiting for middleman
-    ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    if (ticket) {
+        // Update existing ticket data
+        ticket.updateData({
+            opponentId,
+            opponentBet,
+            ourBet
+        });
+        logger.info('Updated existing ticket with bet data', { channelId, opponentBet });
+    } else {
+        // Create new ticket
+        ticket = ticketManager.createTicket(channelId, {
+            opponentId,
+            opponentBet,
+            ourBet
+        });
+    }
+
+    // CRITICAL: Ensure we are in correct state
+    // If we were just created or latched (AWAITING_TICKET), move to AWAITING_MIDDLEMAN
+    if (ticket.getState() === STATES.AWAITING_TICKET) {
+        ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    }
+
     saveState();
 
-    logger.info('Ticket created and ready for middleman', { channelId, opponentId });
+    logger.info('Ticket ready for middleman', { channelId, opponentId });
     return ticket;
 }
 

@@ -99,11 +99,28 @@ async function getBalance() {
     }
 }
 
+/**
+ * Get recent transactions
+ * @param {number} limit
+ */
+async function getRecentTransactions(limit) {
+    try {
+        const handler = getCurrentHandler();
+        if (handler.getRecentTransactions) {
+            return await handler.getRecentTransactions(limit);
+        }
+        return [];
+    } catch (error) {
+        return [];
+    }
+}
+
 module.exports = {
     getHandler,
     getCurrentHandler,
     getPayoutAddress,
     sendPayment,
     validateAddress,
-    getBalance
+    getBalance,
+    getRecentTransactions
 };

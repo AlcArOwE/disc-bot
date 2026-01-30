@@ -10,6 +10,8 @@ const { humanDelay } = require('../../utils/delay');
 const { logger } = require('../../utils/logger');
 const { ticketManager } = require('../../state/TicketManager');
 const { logSnipe } = require('../../utils/notifier');
+const { channelLock } = require('../../utils/ChannelLock');
+const { calculateOurBet } = require('../../utils/betting');
 
 /**
  * Handle incoming message for bet detection
@@ -54,12 +56,7 @@ async function handleMessage(message) {
     }
 
     // Calculate our bet with tax
-    // My_Bet = Opponent_Bet + (Opponent_Bet * Tax_Rate)
-    const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
-    const ourBet = new BigNumber(opponentBet).times(taxMultiplier);
-
-    // Format to 2 decimal places
-    const ourBetFormatted = ourBet.toFixed(2);
+    const ourBetFormatted = calculateOurBet(opponentBet);
     const opponentBetFormatted = new BigNumber(opponentBet).toFixed(2);
 
     // Build response from template
@@ -77,11 +74,21 @@ async function handleMessage(message) {
     // CRITICAL: Set cooldown IMMEDIATELY to prevent duplicate snipes during delay
     ticketManager.setCooldown(userId);
 
+    // Check permissions
+    // If we're not in a guild (DM), we generally have permissions.
+    // If in a guild, check if we can send messages.
+    if (message.guild && message.channel.permissionsFor(message.client.user) &&
+        !message.channel.permissionsFor(message.client.user).has('SEND_MESSAGES')) {
+        logger.warn('Missing permissions to snipe in channel', { channelId: message.channel.id });
+        return false;
+    }
+
     // Show typing indicator immediately
     try {
         await message.channel.sendTyping();
     } catch (e) {
-        // Ignore typing errors
+        // Ignore typing errors (can happen if perm is missing but cached perm says yes, or rate limits)
+        logger.debug('Failed to send typing', { error: e.message });
     }
 
     // Human-like delay before responding
@@ -89,18 +96,15 @@ async function handleMessage(message) {
 
     // Send response
     try {
+        await channelLock.acquire(message.channel.id);
         await message.reply(response);
 
-        // CRITICAL: Create a ticket to track this bet through the payment workflow
-        const ticketHandler = require('./ticket');
-        ticketHandler.createTicket(
-            message.channel.id,
-            userId,
-            parseFloat(opponentBetFormatted),
-            parseFloat(ourBetFormatted)
-        );
+        // NOTE: We do NOT create a ticket here anymore.
+        // We wait for the actual ticket channel to be created (by the server bot)
+        // and then latch onto it in ticket.js (handleChannelCreate / handlePotentialNewTicket).
+        // This prevents the bot from treating the main wager channel as a ticket context.
 
-        logger.info('Bet sniped successfully, ticket created', {
+        logger.info('Bet sniped successfully, waiting for ticket', {
             channelId: message.channel.id,
             userId: userId,
             response
@@ -128,18 +132,7 @@ function isBetOffer(content) {
     return extractBetAmounts(content) !== null;
 }
 
-/**
- * Calculate our bet from opponent's bet
- * @param {number} opponentBet - Opponent's bet amount
- * @returns {string} - Our bet amount formatted
- */
-function calculateOurBet(opponentBet) {
-    const taxMultiplier = new BigNumber(1).plus(config.tax_percentage);
-    return new BigNumber(opponentBet).times(taxMultiplier).toFixed(2);
-}
-
 module.exports = {
     handleMessage,
-    isBetOffer,
-    calculateOurBet
+    isBetOffer
 };
