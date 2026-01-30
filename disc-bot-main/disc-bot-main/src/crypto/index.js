@@ -42,24 +42,19 @@ function getPayoutAddress(network = config.crypto_network) {
  * Send payment using configured network
  * @param {string} toAddress - Recipient address
  * @param {number} amount - Amount in crypto (not USD)
- * @param {string} paymentId - Unique payment ID for idempotency
- * @returns {Promise<{success: boolean, txId?: string, error?: string}>}
+ * @param {string} paymentId - Unique payment ID for idempotency (optional, auto-generated)
+ * @param {string} ticketId - Ticket ID for tracking (optional)
+ * @returns {Promise<{success: boolean, txId?: string, error?: string, duplicate?: boolean}>}
  */
 
-// Track completed payments for idempotency
-const completedPayments = new Map();
-// Track daily spending
-let dailySpendUsd = 0;
-let lastResetDate = new Date().toDateString();
+// Import persistent idempotency store
+const { idempotencyStore } = require('../state/IdempotencyStore');
 
-async function sendPayment(toAddress, amount, paymentId = null) {
+async function sendPayment(toAddress, amount, paymentId = null, ticketId = null) {
     try {
-        // Reset daily limit at midnight
-        const today = new Date().toDateString();
-        if (today !== lastResetDate) {
-            dailySpendUsd = 0;
-            lastResetDate = today;
-            logger.info('Daily spending limit reset');
+        // Generate payment ID if not provided
+        if (!paymentId) {
+            paymentId = idempotencyStore.generatePaymentId(ticketId || 'unknown', toAddress, amount);
         }
 
         // SAFETY GATE 1: Check if simulation mode is enabled in config
@@ -83,13 +78,17 @@ async function sendPayment(toAddress, amount, paymentId = null) {
             };
         }
 
-        // SAFETY GATE 3: Idempotency check
-        if (paymentId && completedPayments.has(paymentId)) {
-            const existingTx = completedPayments.get(paymentId);
-            logger.warn('⚠️ IDEMPOTENCY: Payment already completed', { paymentId, existingTxId: existingTx });
+        // SAFETY GATE 3: PERSISTENT Idempotency check
+        const idempotencyCheck = idempotencyStore.canSend(paymentId);
+        if (!idempotencyCheck.canSend) {
+            logger.warn('⚠️ IDEMPOTENCY: Payment blocked', {
+                paymentId,
+                reason: idempotencyCheck.reason,
+                existingTxId: idempotencyCheck.existingTxId
+            });
             return {
                 success: true,
-                txId: existingTx,
+                txId: idempotencyCheck.existingTxId,
                 duplicate: true
             };
         }
@@ -115,12 +114,13 @@ async function sendPayment(toAddress, amount, paymentId = null) {
             };
         }
 
-        // SAFETY GATE 6: Daily limit
+        // SAFETY GATE 6: Daily limit (using persistent store)
         const maxDaily = config.payment_safety?.max_daily_usd || 500;
-        if (dailySpendUsd + amount > maxDaily) {
+        const dailySpend = idempotencyStore.getDailySpend();
+        if (dailySpend + amount > maxDaily) {
             logger.error('Payment would exceed daily limit', {
                 amount,
-                dailySpent: dailySpendUsd,
+                dailySpent: dailySpend,
                 limit: maxDaily
             });
             return {
@@ -129,30 +129,42 @@ async function sendPayment(toAddress, amount, paymentId = null) {
             };
         }
 
+        // Record INTENT before broadcast (for crash recovery)
+        if (!idempotencyStore.recordIntent(paymentId, toAddress, amount, ticketId)) {
+            // Intent already exists but canSend returned true (must be PENDING or FAILED)
+            logger.info('Retrying existing payment', { paymentId });
+        }
+
         const handler = getCurrentHandler();
         logger.info('💸 SENDING REAL PAYMENT', {
             network: config.crypto_network,
             to: toAddress,
             amount,
-            paymentId,
-            dailySpendBefore: dailySpendUsd
+            paymentId
         });
 
-        const result = await handler.sendPayment(toAddress, amount);
+        let result;
+        try {
+            result = await handler.sendPayment(toAddress, amount);
+        } catch (broadcastError) {
+            // Record failure
+            idempotencyStore.recordFailed(paymentId, broadcastError.message);
+            throw broadcastError;
+        }
 
         if (result.success) {
-            // Track for idempotency
-            if (paymentId) {
-                completedPayments.set(paymentId, result.txId);
-            }
-            // Track daily spend
-            dailySpendUsd += amount;
+            // Record BROADCAST immediately after success
+            idempotencyStore.recordBroadcast(paymentId, result.txId);
+            // Mark as CONFIRMED (in real implementation, wait for blockchain confirmation)
+            idempotencyStore.recordConfirmed(paymentId);
 
             logger.info('✅ Payment sent successfully', {
                 txId: result.txId,
-                dailySpendAfter: dailySpendUsd
+                paymentId,
+                dailySpendAfter: idempotencyStore.getDailySpend()
             });
         } else {
+            idempotencyStore.recordFailed(paymentId, result.error);
             logger.error('Payment failed', { error: result.error });
         }
 

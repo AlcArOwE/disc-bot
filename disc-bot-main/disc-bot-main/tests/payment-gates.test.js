@@ -1,12 +1,11 @@
 /**
- * Payment Safety Gate Tests - Prove all 6 gates work
+ * Payment Safety Gate Tests - Updated for persistent idempotency
  */
 
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
-
-// We need to test the sendPayment function directly
-// First, we mock config to control the test environment
+const fs = require('fs');
+const path = require('path');
 
 describe('Payment Safety Gates', () => {
     let originalEnv;
@@ -17,6 +16,12 @@ describe('Payment Safety Gates', () => {
         // Reset env for clean test
         delete process.env.ENABLE_LIVE_TRANSFERS;
         delete process.env.MAX_PAYMENT_PER_TX;
+
+        // Clean up idempotency file
+        const idempotencyFile = path.resolve(__dirname, '../data/idempotency.json');
+        if (fs.existsSync(idempotencyFile)) {
+            fs.unlinkSync(idempotencyFile);
+        }
     });
 
     afterEach(() => {
@@ -26,7 +31,9 @@ describe('Payment Safety Gates', () => {
 
     describe('Gate 2: DRY-RUN Default', () => {
         it('should return dry-run when ENABLE_LIVE_TRANSFERS is not set', async () => {
-            // Import fresh (config has simulation_mode: false)
+            // Clear cache
+            delete require.cache[require.resolve('../src/crypto/index.js')];
+            delete require.cache[require.resolve('../src/state/IdempotencyStore.js')];
             const { sendPayment } = require('../src/crypto/index.js');
 
             const result = await sendPayment('LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ', 10);
@@ -36,6 +43,8 @@ describe('Payment Safety Gates', () => {
         });
 
         it('should return dry-run=true flag when not live', async () => {
+            delete require.cache[require.resolve('../src/crypto/index.js')];
+            delete require.cache[require.resolve('../src/state/IdempotencyStore.js')];
             const { sendPayment } = require('../src/crypto/index.js');
 
             const result = await sendPayment('LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ', 10);
@@ -54,6 +63,7 @@ describe('Payment Safety Gates', () => {
 
             // Clear module cache to pick up new env
             delete require.cache[require.resolve('../src/crypto/index.js')];
+            delete require.cache[require.resolve('../src/state/IdempotencyStore.js')];
             const { sendPayment } = require('../src/crypto/index.js');
 
             // Try to send $100 when default limit is $50
@@ -65,11 +75,7 @@ describe('Payment Safety Gates', () => {
     });
 
     describe('Gate 4: Address Allowlist', () => {
-        it('should reject addresses not in allowlist (when allowlist is configured)', async () => {
-            // This test requires an allowlist in config
-            // For now, we verify the logic path exists by checking the code
-            // A full test would require modifying config which is complex in Node
-            const fs = require('fs');
+        it('should have allowlist enforcement in code', () => {
             const cryptoCode = fs.readFileSync('./src/crypto/index.js', 'utf8');
 
             assert.ok(cryptoCode.includes('address_allowlist'));
@@ -77,44 +83,37 @@ describe('Payment Safety Gates', () => {
         });
     });
 
-    describe('Gate 3: Idempotency', () => {
-        it('should track completed payments in memory', () => {
-            const fs = require('fs');
+    describe('Gate 3: Persistent Idempotency', () => {
+        it('should use IdempotencyStore for tracking', () => {
             const cryptoCode = fs.readFileSync('./src/crypto/index.js', 'utf8');
 
-            assert.ok(cryptoCode.includes('completedPayments'));
-            assert.ok(cryptoCode.includes('IDEMPOTENCY'));
+            assert.ok(cryptoCode.includes('idempotencyStore'));
+            assert.ok(cryptoCode.includes('PERSISTENT Idempotency'));
         });
 
-        it('KNOWN ISSUE: idempotency is IN-MEMORY only, not persisted', () => {
-            // This documents the known limitation
-            const fs = require('fs');
+        it('should store data in JSON file, not Map', () => {
             const cryptoCode = fs.readFileSync('./src/crypto/index.js', 'utf8');
 
-            // Verify it's a Map (in-memory)
-            assert.ok(cryptoCode.includes('const completedPayments = new Map()'));
-
-            // Document: This is NOT sufficient for production restart safety
-            // A fix would require persisting to disk or using a database
+            // Should NOT have the old in-memory Map
+            assert.ok(!cryptoCode.includes('const completedPayments = new Map()'));
+            // Should have the persistent store import
+            assert.ok(cryptoCode.includes("require('../state/IdempotencyStore')"));
         });
     });
 
     describe('Gate 6: Daily Limit', () => {
-        it('should have daily limit tracking', () => {
-            const fs = require('fs');
+        it('should use persistent daily limit tracking', () => {
             const cryptoCode = fs.readFileSync('./src/crypto/index.js', 'utf8');
 
-            assert.ok(cryptoCode.includes('dailySpendUsd'));
+            assert.ok(cryptoCode.includes('getDailySpend'));
             assert.ok(cryptoCode.includes('max_daily_usd'));
-            assert.ok(cryptoCode.includes('Daily limit'));
         });
 
-        it('should reset daily limit at midnight', () => {
-            const fs = require('fs');
-            const cryptoCode = fs.readFileSync('./src/crypto/index.js', 'utf8');
+        it('should track daily spend in persistent store', () => {
+            const storeCode = fs.readFileSync('./src/state/IdempotencyStore.js', 'utf8');
 
-            assert.ok(cryptoCode.includes('lastResetDate'));
-            assert.ok(cryptoCode.includes('Daily spending limit reset'));
+            assert.ok(storeCode.includes('getDailySpend'));
+            assert.ok(storeCode.includes('toDateString'));
         });
     });
 });
