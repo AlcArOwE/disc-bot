@@ -5,6 +5,7 @@
 
 const { logger } = require('../utils/logger');
 const config = require('../../config.json');
+const BigNumber = require('bignumber.js');
 
 class SolanaHandler {
     constructor() {
@@ -120,7 +121,7 @@ class SolanaHandler {
                 sendAndConfirmTransaction
             } = require('@solana/web3.js');
 
-            const lamports = Math.floor(amount * 1000000000);
+            const lamports = new BigNumber(amount).times(1000000000).integerValue(BigNumber.ROUND_FLOOR).toNumber();
             const toPublicKey = new PublicKey(toAddress);
 
             // Create transfer instruction

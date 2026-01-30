@@ -44,34 +44,8 @@ ticketManager.onTicketRemoved = (channelId) => {
  */
 async function handleMessage(message) {
     const channelId = message.channel.id;
-    const ticket = ticketManager.getTicket(channelId);
-
-    // DEBUG: Log every message that goes through ticket handler
-    logger.debug('Ticket handler processing', {
-        channelId,
-        hasTicket: !!ticket,
-        state: ticket?.getState() || 'NO_TICKET',
-        authorId: message.author.id,
-        content: message.content.substring(0, 50)
-    });
-
-    // If no ticket exists, check if this is a new ticket being created
-    if (!ticket) {
-        return handlePotentialNewTicket(message);
-    }
-
-    // CONCURRENCY LOGGING
-    const activeTickets = ticketManager.getActiveTickets().length;
-    if (activeTickets > 1) {
-        logger.info('⚙️ Processing message in concurrent session', {
-            channelId,
-            activeSessionCount: activeTickets,
-            ticketState: ticket.getState()
-        });
-    }
 
     // CONCURRENCY LOCK (P2)
-    // Prevent multiple messages in the same channel from running handleMessage concurrently
     if (processingSessions.has(channelId)) {
         logger.debug('🔒 Session locked (concurrency)', { channelId });
         return;
@@ -79,17 +53,51 @@ async function handleMessage(message) {
     processingSessions.add(channelId);
 
     try {
-        // GLOBAL CANCELLATION CHECK (MM or User can cancel)
+        const ticket = ticketManager.getTicket(channelId);
+
+        // DEBUG: Log every message for diagnostics
+        logger.debug('Ticket handler processing', {
+            channelId,
+            hasTicket: !!ticket,
+            state: ticket?.getState() || 'NO_TICKET',
+            authorId: message.author.id,
+            content: message.content.substring(0, 50)
+        });
+
+        // 1. If no ticket exists, check if this is a new ticket being created
+        if (!ticket) {
+            return await handlePotentialNewTicket(message);
+        }
+
+        // 2. CONCURRENCY LOGGING
+        const activeTickets = ticketManager.getActiveTickets().length;
+        if (activeTickets > 1) {
+            logger.info('⚙️ Processing message in concurrent session', {
+                channelId,
+                activeSessionCount: activeTickets,
+                ticketState: ticket.getState()
+            });
+        }
+
+        // 3. GLOBAL CANCELLATION CHECK (MM or User can cancel)
         const isCancel = isCancellation(message.content);
         if (isCancel && (isMiddleman(message.author.id) || message.author.id === ticket.data.opponentId)) {
-            logger.warn('🚫 Cancellation keyword detected!', { channelId, authorId: message.author.id, content: message.content });
-            await messageQueue.send(message.channel, '🛑 Game aborted. State cleared.');
-            ticket.transition(STATES.CANCELLED);
-            saveState();
+            const content = message.content.toLowerCase();
+            if (content.includes('reset')) {
+                logger.warn('🔄 TICKET RESET BY MIDDLEMAN', { channelId, keyword: content });
+                ticket.transition(STATES.AWAITING_MIDDLEMAN);
+                await messageQueue.send(message.channel, 'Received. Ticket state reset to AWAITING_MIDDLEMAN.');
+                saveState();
+            } else {
+                logger.warn('🚫 TICKET CANCELLED', { channelId, keyword: content });
+                ticket.transition(STATES.CANCELLED, { cancellationReason: content });
+                await messageQueue.send(message.channel, 'Received. Ticket cancelled.');
+                saveState();
+            }
             return;
         }
 
-        // Route to appropriate handler based on state
+        // 4. Route to appropriate handler based on state
         switch (ticket.getState()) {
             case STATES.AWAITING_TICKET:
                 await handleAwaitingTicket(message, ticket);
@@ -112,22 +120,11 @@ async function handleMessage(message) {
             default:
                 break;
         }
-
-        if (isCancel && (isMiddleman(message.author.id) || message.author.id === ticket.data.opponentId)) {
-            const content = message.content.toLowerCase();
-            if (content.includes('reset')) {
-                logger.warn('🔄 TICKET RESET BY MIDDLEMAN', { channelId, keyword: content });
-                ticket.transition(STATES.AWAITING_MIDDLEMAN);
-                await messageQueue.send(message.channel, 'Received. Ticket state reset to AWAITING_MIDDLEMAN.');
-                saveState();
-            } else {
-                logger.warn('🚫 TICKET CANCELLED', { channelId, keyword: content });
-                ticket.transition(STATES.CANCELLED, { cancellationReason: content });
-                await messageQueue.send(message.channel, 'Received. Ticket cancelled.');
-                saveState();
-            }
-            return;
-        }
+    } catch (error) {
+        logger.error('Error in ticket handler', {
+            channelId,
+            error: error.message
+        });
     } finally {
         processingSessions.delete(channelId);
     }

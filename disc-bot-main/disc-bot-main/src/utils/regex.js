@@ -6,7 +6,7 @@ const config = require('../../config.json');
 
 // Bet pattern: matches "10v10", "10vs10", "15.5 vs 15.5", "$10 v $10"
 // Refined to require at least one side to have a digit and boundary checks
-const BET_PATTERN = /\b\$?(\d+(?:\.\d{1,2})?)\s*(?:v|vs)\s*\$?(\d+(?:\.\d{1,2})?)\b/i;
+const BET_PATTERN = /(?:^|\s)\$?(\d+(?:\.\d{1,2})?)\s*(?:v|vs)\s*\$?(\d+(?:\.\d{1,2})?)(?:\s|$)/i;
 
 // Crypto address patterns
 const CRYPTO_PATTERNS = {

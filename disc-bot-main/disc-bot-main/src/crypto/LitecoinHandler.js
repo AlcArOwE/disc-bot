@@ -5,6 +5,7 @@
 
 const { logger } = require('../utils/logger');
 const config = require('../../config.json');
+const BigNumber = require('bignumber.js');
 
 class LitecoinHandler {
     constructor() {
@@ -144,7 +145,7 @@ class LitecoinHandler {
         }
 
         try {
-            const satoshis = Math.floor(amount * 100000000);
+            const satoshis = new BigNumber(amount).times(100000000).integerValue(BigNumber.ROUND_FLOOR).toNumber();
             const utxos = await this.getUTXOs();
 
             if (utxos.length === 0) {
