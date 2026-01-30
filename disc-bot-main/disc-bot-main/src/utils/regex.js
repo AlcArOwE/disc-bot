@@ -11,13 +11,13 @@ const BET_PATTERN = /\b\$?(\d+(?:\.\d{1,2})?)\s*(?:v|vs)\s*\$?(\d+(?:\.\d{1,2})?
 // Crypto address patterns
 const CRYPTO_PATTERNS = {
     // Litecoin: L, M, or 3 prefix (Legacy), or ltc1 (Bech32)
-    LTC: /^(L|M|3)[a-km-zA-HJ-NP-Z1-9]{26,33}$|^ltc1[a-z0-9]{39,59}$/,
+    LTC: /^(L|M|3)[a-km-zA-HJ-NP-Z1-9]{26,33}$|^ltc1[a-z0-9]{35,60}$/i,
 
     // Solana: Base58, 32-44 characters
     SOL: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
 
     // Bitcoin: 1 or 3 prefix (Legacy), or bc1 (Bech32)
-    BTC: /^(1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{39,59}$/
+    BTC: /^(1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{35,60}$/i
 };
 
 // Pattern to detect middleman starting the game
