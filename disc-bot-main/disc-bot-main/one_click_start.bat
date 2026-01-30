@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
-title Discord Wagering Bot [TOTALLITY]
+title Discord Wagering Bot [REPAIRED]
 color 0B
 
 :: ==============================================================
-::  DISCORD WAGERING BOT - PRODUCTION SHELL
+::  DISCORD WAGERING BOT - PRODUCTION SHELL (v2.1)
 ::  Author: Antigravity
 :: ==============================================================
 
@@ -15,18 +15,21 @@ set RESTART_COUNT=0
 :MENU
 cls
 echo.
-echo  ══════════════════════════════════════════════════════════════
+echo  ==============================================================
 echo   DISCORD WAGERING BOT - ONE-CLICK PRODUCTION SHELL
-echo  ══════════════════════════════════════════════════════════════
+echo  ==============================================================
 echo.
-echo   [1] 🚀 START BOT (with Auto-Restart)
-echo   [2] 🛡️  RUN DIAGNOSTICS (Sanity Check)
-echo   [3] 🔄 UPDATE PROJECT (Git Sync)
-echo   [4] 📝 EDIT CONFIGURATION (.env)
-echo   [5] 🗑️  CLEAR CACHE (node_modules)
-echo   [6] ❌ EXIT
+echo   [1] START BOT (with Auto-Restart)
+echo   [2] RUN DIAGNOSTICS (Sanity Check)
+echo   [3] UPDATE PROJECT (Git Sync)
+echo   [4] EDIT CONFIGURATION (.env)
+echo   [5] CLEAR CACHE (node_modules)
+echo   [6] EXIT
 echo.
-set /p opt=" Choose an option [1-6]: "
+
+:: Use CHOICE command for robust input (Standard since Win Vista)
+choice /c 123456 /n /m " Choose an option [1-6]: "
+set opt=%errorlevel%
 
 if "%opt%"=="1" goto START_BOT
 if "%opt%"=="2" goto DIAGNOSTICS
@@ -51,16 +54,15 @@ if not exist .env (
 echo  [2/3] Checking Dependencies...
 if not exist node_modules (
     echo [INFO] Installing dependencies (this may take a minute)...
-    npm install --silent
+    call npm install --silent
 )
 
 echo  [3/3] Launching Bot...
 echo.
-echo  ══════════════════════════════════════════════════════════════
+echo  ==============================================================
 echo   BOT STATUS: ACTIVE
 echo   - To stop the bot, close this window or press Ctrl+C.
-echo   - Logs are being written to /logs directory.
-echo  ══════════════════════════════════════════════════════════════
+echo  ==============================================================
 echo.
 
 :BOT_LOOP
@@ -77,9 +79,9 @@ goto BOT_LOOP
 :DIAGNOSTICS
 cls
 echo.
-echo  ══════════════════════════════════════════════════════════════
+echo  ==============================================================
 echo   SYSTEM DIAGNOSTICS
-echo  ══════════════════════════════════════════════════════════════
+echo  ==============================================================
 echo.
 node diagnose.js
 echo.
@@ -91,8 +93,8 @@ goto MENU
 cls
 echo.
 echo  [INFO] Fetching latest changes from GitHub...
-git fetch --all
-git reset --hard origin/main
+call git fetch --all
+call git reset --hard origin/main
 echo.
 echo  [SUCCESS] Bot updated to latest perfection state.
 pause
@@ -107,12 +109,13 @@ goto MENU
 :CLEAN
 echo.
 echo  [WARNING] This will delete node_modules and re-install.
-set /p confirm=" Are you sure? (Y/N): "
-if /i "%confirm%"=="Y" (
-    echo Cleaning...
-    rmdir /s /q node_modules
-    npm install
-    echo Cleaned and Re-installed!
-)
+echo  Are you sure?
+choice /c YN /m " (Y/N): "
+if errorlevel 2 goto MENU
+
+echo Cleaning...
+rmdir /s /q node_modules
+call npm install
+echo Cleaned and Re-installed!
 pause
 goto MENU
