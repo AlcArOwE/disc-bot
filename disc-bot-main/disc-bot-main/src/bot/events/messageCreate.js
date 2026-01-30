@@ -60,6 +60,8 @@ async function handleMessageCreate(message) {
         }
 
         // Check if already tracking this channel as a ticket
+        // CRITICAL: Check ticket BEFORE monitored channels filter
+        // so ticket channels work even if not in the monitored list
         const existingTicket = ticketManager.getTicket(message.channel.id);
         if (existingTicket) {
             debugLog('ROUTE_TO_TICKET', { ...msgMeta, ticketState: existingTicket.state });
@@ -67,14 +69,31 @@ async function handleMessageCreate(message) {
             return;
         }
 
+        // Also check if this looks like a ticket channel by name
+        // This handles cases where channelCreate didn't fire
+        const channelName = message.channel.name?.toLowerCase() || '';
+        const isTicketLikeChannel = channelName.includes('ticket') ||
+            channelName.includes('order') ||
+            channelName.includes('wager') ||
+            channelName.includes('bet');
+
+        if (isTicketLikeChannel) {
+            debugLog('TICKET_CHANNEL_DETECTED', { ...msgMeta, channelName });
+            // Route to ticket handler even without existing ticket
+            // The handler will check for middleman and create ticket if needed
+            await ticketHandler.handleMessage(message);
+            return;
+        }
+
         // Check if channel is in monitored list (or monitor all if empty)
+        // Only applies to public channels, not ticket channels
         const monitoredChannels = config.channels.monitored_channels || [];
         if (monitoredChannels.length > 0 && !monitoredChannels.includes(message.channel.id)) {
             debugLog('IGNORE_UNMONITORED', msgMeta);
             return;
         }
 
-        // Check for bet offers (sniper)
+        // Check for bet offers (sniper) - only in public channels
         debugLog('ROUTE_TO_SNIPER', msgMeta);
         const sniped = await sniperHandler.handleMessage(message);
         if (sniped) {

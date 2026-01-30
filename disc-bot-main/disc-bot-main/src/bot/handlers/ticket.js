@@ -64,18 +64,109 @@ async function handleMessage(message) {
 
 /**
  * Check if this message represents a new ticket
+ * If middleman sends a message in a ticket-like channel, create a ticket
  */
 async function handlePotentialNewTicket(message) {
     // Check if channel name looks like a ticket
     const channelName = message.channel.name?.toLowerCase() || '';
-    if (!channelName.includes('ticket')) {
+    const isTicketLike = channelName.includes('ticket') ||
+        channelName.includes('order') ||
+        channelName.includes('wager') ||
+        channelName.includes('bet');
+
+    if (!isTicketLike) {
         return false;
     }
 
-    // This could be a ticket - check if we need to track it
-    // We'll create a ticket when we detect our opponent in the channel
-    logger.debug('Potential ticket channel detected', { channelId: message.channel.id, name: channelName });
-    return false;
+    logger.info('📋 Potential ticket channel detected', {
+        channelId: message.channel.id,
+        channelName,
+        authorId: message.author.id
+    });
+
+    // Check if message is from a middleman - if so, we definitely need to track this
+    const isMM = isMiddleman(message.author.id);
+
+    if (isMM) {
+        logger.info('🎯 Middleman detected in ticket channel - auto-creating ticket', {
+            channelId: message.channel.id,
+            middlemanId: message.author.id
+        });
+
+        // Try to get pending wager for bet amounts
+        const pendingWager = ticketManager.getAnyPendingWager();
+
+        let ticketData;
+        if (pendingWager) {
+            ticketData = {
+                opponentId: pendingWager.userId,
+                opponentBet: pendingWager.opponentBet,
+                ourBet: pendingWager.ourBet,
+                sourceChannelId: pendingWager.sourceChannelId,
+                autoDetected: true
+            };
+            logger.info('🔗 Linked to pending wager', {
+                opponentBet: pendingWager.opponentBet,
+                ourBet: pendingWager.ourBet
+            });
+        } else {
+            ticketData = {
+                opponentId: null,
+                opponentBet: 0,
+                ourBet: 0,
+                autoDetected: true
+            };
+            logger.warn('⚠️ No pending wager found - ticket created with zero amounts');
+        }
+
+        // Create the ticket
+        const ticket = ticketManager.createTicket(message.channel.id, ticketData);
+
+        // Since we already detected a middleman, transition directly to AWAITING_PAYMENT_ADDRESS
+        ticket.transition(STATES.AWAITING_MIDDLEMAN);
+        ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: message.author.id });
+        saveState();
+
+        logger.info('✅ Ticket auto-created and moved to AWAITING_PAYMENT_ADDRESS', {
+            channelId: message.channel.id,
+            middlemanId: message.author.id,
+            state: ticket.getState()
+        });
+
+        // Now try to extract address from this very message
+        const network = config.crypto_network;
+        const address = extractCryptoAddress(message.content, network);
+        if (address) {
+            logger.info('📬 Address found in MM message', { address });
+            // Process it as if we were in AWAITING_PAYMENT_ADDRESS state
+            return await handleAwaitingPaymentAddress(message, ticket);
+        }
+
+        return true;
+    }
+
+    // Not a middleman - might be opponent or someone else
+    // Create a basic ticket and wait for middleman
+    logger.debug('Creating basic ticket for non-MM message', { channelId: message.channel.id });
+
+    const pendingWager = ticketManager.getAnyPendingWager();
+    const ticketData = pendingWager ? {
+        opponentId: pendingWager.userId,
+        opponentBet: pendingWager.opponentBet,
+        ourBet: pendingWager.ourBet,
+        autoDetected: true
+    } : {
+        opponentId: message.author.id,  // Assume sender is opponent
+        opponentBet: 0,
+        ourBet: 0,
+        autoDetected: true
+    };
+
+    const ticket = ticketManager.createTicket(message.channel.id, ticketData);
+    ticket.transition(STATES.AWAITING_MIDDLEMAN);
+    saveState();
+
+    return true;
 }
 
 /**
