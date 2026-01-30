@@ -19,11 +19,18 @@ function ensureDataDir() {
 function saveState() {
     try {
         ensureDataDir();
-        const state = { savedAt: new Date().toISOString(), tickets: ticketManager.toJSON() };
+        const managerState = ticketManager.toJSON();
+        const state = {
+            savedAt: new Date().toISOString(),
+            ...managerState
+        };
         const tmp = STATE_FILE + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
         fs.renameSync(tmp, STATE_FILE);
-        logger.debug('State saved', { count: state.tickets.length });
+        logger.debug('State saved', {
+            tickets: managerState.tickets.length,
+            pendingWagers: managerState.pendingWagers.length
+        });
         return true;
     } catch (e) {
         logger.error('Save failed', { error: e.message });
@@ -38,8 +45,13 @@ function loadState() {
             return true;
         }
         const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-        if (state.tickets) ticketManager.fromJSON(state.tickets);
-        logger.info('State loaded', { savedAt: state.savedAt, count: state.tickets?.length });
+        // Pass the whole state object to fromJSON - it's smart enough to handle formats
+        ticketManager.fromJSON(state);
+        logger.info('State loaded', {
+            savedAt: state.savedAt,
+            tickets: state.tickets?.length || 0,
+            pendingWagers: state.pendingWagers?.length || 0
+        });
         return true;
     } catch (e) {
         logger.error('Load failed', { error: e.message });

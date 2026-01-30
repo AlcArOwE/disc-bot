@@ -22,10 +22,48 @@ const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
 const config = require('../config.json');
+const { execSync } = require('child_process');
+const path = require('path');
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STARTUP VALIDATION - Fail fast with clear error messages
+// STARTUP BANNER - Proves which commit/code is running
 // ═══════════════════════════════════════════════════════════════════════════
+function printStartupBanner() {
+    let gitCommit = 'unknown';
+    try {
+        gitCommit = execSync('git rev-parse HEAD', { encoding: 'utf8', cwd: path.join(__dirname, '..') }).trim().slice(0, 12);
+    } catch (e) {
+        // Git not available or not a repo
+    }
+
+    logger.info('═══════════════════════════════════════════════════════════════');
+    logger.info('         DISCORD WAGERING BOT - STARTUP DIAGNOSTICS');
+    logger.info('═══════════════════════════════════════════════════════════════');
+    logger.info(`  Git Commit:     ${gitCommit}`);
+    logger.info(`  Node Version:   ${process.version}`);
+    logger.info(`  Working Dir:    ${process.cwd()}`);
+    logger.info(`  Entry Point:    ${__filename}`);
+    logger.info(`  Config File:    ${path.resolve(__dirname, '../config.json')}`);
+    logger.info('───────────────────────────────────────────────────────────────');
+    logger.info(`  Crypto Network: ${config.crypto_network || 'LTC'}`);
+    logger.info(`  Simulation:     ${config.simulation_mode ? 'ON' : 'OFF'}`);
+    logger.info(`  Live Transfers: ${process.env.ENABLE_LIVE_TRANSFERS === 'true' ? 'ENABLED' : 'DRY-RUN'}`);
+    logger.info(`  Cooldown MS:    ${config.bet_cooldown_ms || 2500}`);
+    logger.info(`  Max Per TX:     $${config.payment_safety?.max_payment_per_tx || 50}`);
+    logger.info(`  Max Daily:      $${config.payment_safety?.max_daily_usd || 500}`);
+    logger.info(`  Middlemen:      ${(config.middleman_ids || []).length} configured`);
+    logger.info(`  Global Proxy:   ${config.proxy_url ? 'ACTIVE' : 'OFF'}`);
+    if (config.proxy_url) logger.info(`  Proxy URL:      ${config.proxy_url.replace(/:[^:@]+@/, ':****@')}`);
+    logger.info('═══════════════════════════════════════════════════════════════');
+}
+
+printStartupBanner();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STARTUP VALIDATION & CONFIG
+// ═══════════════════════════════════════════════════════════════════════════
+
+let discordClientOptions = {};
 
 function validateStartup() {
     const errors = [];
@@ -39,6 +77,23 @@ function validateStartup() {
     // REQUIRED: At least one crypto private key
     const hasLTC = !!process.env.LTC_PRIVATE_KEY;
     const hasSOL = !!process.env.SOL_PRIVATE_KEY;
+
+    discordClientOptions = {
+        http: {}
+    };
+
+    // Add proxy support if configured (R4)
+    if (config.proxy_url && config.proxy_url.length > 0) {
+        try {
+            const HttpsProxyAgent = require('https-proxy-agent');
+            discordClientOptions.http.agent = new HttpsProxyAgent(config.proxy_url);
+            logger.info('Wired HttpsProxyAgent for global Discord client');
+        } catch (e) {
+            logger.warn('https-proxy-agent not found, using basic proxy mode', { error: e.message });
+            discordClientOptions.proxy = config.proxy_url;
+        }
+    }
+
     if (!hasLTC && !hasSOL) {
         errors.push('❌ No crypto private key set. Add LTC_PRIVATE_KEY or SOL_PRIVATE_KEY to .env');
     }
@@ -80,7 +135,6 @@ function validateStartup() {
         logger.error('═══════════════════════════════════════════════════════════════');
         errors.forEach(e => logger.error(e));
         logger.error('');
-        logger.error('Copy .env.example to .env and fill in your values.');
         logger.error('═══════════════════════════════════════════════════════════════');
         process.exit(1);
     }
@@ -91,12 +145,27 @@ function validateStartup() {
 validateStartup();
 
 // Create Discord client
-const client = createClient();
+const client = createClient(discordClientOptions);
 
 // Register event handlers
 client.on('ready', () => handleReady(client));
-client.on('messageCreate', handleMessageCreate);
-client.on('channelCreate', handleChannelCreate);
+client.on('messageCreate', (message) => handleMessageCreate(message));
+client.on('channelCreate', (channel) => handleChannelCreate(channel));
+client.on('channelDelete', (channel) => {
+    const { handleChannelDelete } = require('./bot/handlers/ticket');
+    handleChannelDelete(channel);
+});
+
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+    if (oldMessage.content === newMessage.content) return;
+
+    // ANTI-FRAUD: Check if the message was already processed in a ticket
+    const { ticketManager } = require('./state/TicketManager');
+    if (ticketManager.getTicket(oldMessage.channel.id)) {
+        const { handleMessageUpdate } = require('./bot/handlers/ticket');
+        await handleMessageUpdate(oldMessage, newMessage);
+    }
+});
 
 // Error handling
 client.on('error', (error) => {
@@ -115,37 +184,31 @@ client.on('disconnect', () => {
 client.on('reconnecting', () => {
     logger.info('Reconnecting to Discord...');
 });
-// Import message queue for graceful shutdown
+
+// Import message queue and ticket manager for event handlers
 const { messageQueue } = require('./utils/MessageQueue');
 const { ticketManager } = require('./state/TicketManager');
-
-// Start automated cleanup interval (every 30 minutes)
-const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
-setInterval(() => {
-    const beforeCount = ticketManager.getActiveTickets().length;
-    ticketManager.cleanupOldTickets();
-    const afterCount = ticketManager.getActiveTickets().length;
-    if (beforeCount !== afterCount) {
-        logger.info('Ticket cleanup ran', { removed: beforeCount - afterCount });
-    }
-}, CLEANUP_INTERVAL_MS);
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
     logger.info('Received SIGINT, shutting down gracefully...');
-    logger.info('Draining message queue...');
-    await messageQueue.drain();
-    shutdown();
-    client.destroy();
+    if (messageQueue) {
+        logger.info('Draining message queue...');
+        await messageQueue.drain();
+    }
+    await shutdown();
+    if (client) client.destroy();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     logger.info('Received SIGTERM, shutting down gracefully...');
-    logger.info('Draining message queue...');
-    await messageQueue.drain();
-    shutdown();
-    client.destroy();
+    if (messageQueue) {
+        logger.info('Draining message queue...');
+        await messageQueue.drain();
+    }
+    await shutdown();
+    if (client) client.destroy();
     process.exit(0);
 });
 

@@ -4,6 +4,7 @@
  */
 
 const { logger } = require('../utils/logger');
+const config = require('../../config.json');
 
 class SolanaHandler {
     constructor() {
@@ -33,8 +34,21 @@ class SolanaHandler {
             this.keypair = Keypair.fromSecretKey(secretKey);
             this.publicKey = this.keypair.publicKey;
 
-            // Connect to mainnet
-            this.connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+            // Connect to mainnet with proxy support (R4)
+            const connectionOptions = { commitment: 'confirmed' };
+            if (config.proxy_url) {
+                try {
+                    const HttpsProxyAgent = require('https-proxy-agent');
+                    const fetch = (await import('node-fetch')).default;
+                    const agent = new HttpsProxyAgent(config.proxy_url);
+                    connectionOptions.fetch = (url, options) => fetch(url, { ...options, agent });
+                    logger.debug('Using proxy for Solana Connection');
+                } catch (e) {
+                    logger.warn('Failed to wire proxy to Solana Connection', { error: e.message });
+                }
+            }
+
+            this.connection = new Connection(clusterApiUrl('mainnet-beta'), connectionOptions);
 
             this.initialized = true;
             logger.info('SOL handler initialized', { address: this.publicKey.toString() });

@@ -19,7 +19,9 @@ const CRYPTO_PATTERNS = {
 
 // Pattern to detect middleman starting the game
 // e.g., "@User1 first, @User2 second" or "User1 goes first"
-const GAME_START_PATTERN = /<@!?(\d+)>\s*(?:goes?\s*)?first|first:?\s*<@!?(\d+)>/i;
+// Pattern to detect middleman starting the game
+// e.g., "@User1 first, @User2 second" or "User1 goes first" or "ft5 @bot first" or "you first"
+const GAME_START_PATTERN = /(?:ft\d+|game|dice|start|ready|gl|Confirm).*?(?:<@!?(\d+)>|(\b\w+\b)).*?first/i;
 
 // Pattern to detect dice roll results from dice bots
 // Matches common formats like "rolled a 6", "🎲 6", "[6]"
@@ -88,8 +90,8 @@ function extractCryptoAddress(message, network) {
     // Split message into words and find matching address
     const words = message.split(/\s+/);
     for (const word of words) {
-        // Remove formatting and common punctuation
-        const cleaned = word.replace(/[<>.,;:"'!?]/g, '');
+        // Remove formatting, backticks, and common punctuation
+        const cleaned = word.replace(/[`<>.,;:"'!?()[\]{}]/g, '');
         if (pattern.test(cleaned)) {
             return cleaned;
         }
@@ -106,8 +108,23 @@ function extractGameStart(message) {
     const match = message.match(GAME_START_PATTERN);
     if (!match) return null;
 
-    const userId = match[1] || match[2];
-    return userId ? { userId } : null;
+    // Extract userId and username from the match
+    const userId = match[1]; // This captures the ID from <@!ID>
+    const username = match[2]; // This captures the word if no mention
+
+    // Check if the bot was mentioned anywhere in a "first" context
+    const botId = process.env.CLIENT_ID || '';
+    const botMention = (botId && (message.includes(`<@${botId}>`) || message.includes(`<@!${botId}>`))) ||
+        message.toLowerCase().includes('bot first') ||
+        message.toLowerCase().includes('you first');
+
+    const firstIsBot = (userId === botId) || botMention;
+
+    return {
+        userId: userId || null,
+        username: username || null,
+        botFirst: firstIsBot
+    };
 }
 
 /**
@@ -130,6 +147,17 @@ function isPaymentConfirmation(message) {
     return PAYMENT_CONFIRM_PATTERNS.some(pattern => pattern.test(message));
 }
 
+/**
+ * Check if message contains cancellation keywords
+ * @param {string} message - Message to check
+ * @returns {boolean}
+ */
+function isCancellation(message) {
+    const keywords = config.cancellation_keywords || ['void', 'cancel', 'refund', 'reset'];
+    const lower = message.toLowerCase();
+    return keywords.some(k => lower.includes(k.toLowerCase()));
+}
+
 module.exports = {
     BET_PATTERN,
     CRYPTO_PATTERNS,
@@ -140,5 +168,6 @@ module.exports = {
     extractCryptoAddress,
     extractGameStart,
     extractDiceResult,
-    isPaymentConfirmation
+    isPaymentConfirmation,
+    isCancellation
 };

@@ -4,6 +4,7 @@
  */
 
 const { logger } = require('../utils/logger');
+const config = require('../../config.json');
 
 class LitecoinHandler {
     constructor() {
@@ -49,7 +50,7 @@ class LitecoinHandler {
     validateAddress(address) {
         if (!this.litecore) {
             try { this.litecore = require('bitcore-lib-ltc'); }
-            catch { return false; }
+            catch (e) { return false; }
         }
 
         try {
@@ -77,7 +78,17 @@ class LitecoinHandler {
         const url = `https://api.blockcypher.com/v1/ltc/main/addrs/${this.address}?unspentOnly=true`;
 
         try {
-            const response = await fetch(url);
+            const fetchOptions = {};
+            if (config.proxy_url) {
+                try {
+                    const HttpsProxyAgent = require('https-proxy-agent');
+                    fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
+                } catch (e) {
+                    logger.debug('Non-critical error fetching UTXOs (likely 404/Empty)', { error: e.message });
+                }
+            }
+
+            const response = await fetch(url, fetchOptions);
             const data = await response.json();
 
             if (data.error) {
@@ -168,11 +179,22 @@ class LitecoinHandler {
         const fetch = (await import('node-fetch')).default;
         const url = 'https://api.blockcypher.com/v1/ltc/main/txs/push';
 
-        const response = await fetch(url, {
+        const fetchOptions = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tx: txHex })
-        });
+        };
+
+        if (config.proxy_url) {
+            try {
+                const HttpsProxyAgent = require('https-proxy-agent');
+                fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
+            } catch (e) {
+                logger.debug('Broadcast response parsing error (potentially success without JSON)', { error: e.message });
+            }
+        }
+
+        const response = await fetch(url, fetchOptions);
 
         const data = await response.json();
 

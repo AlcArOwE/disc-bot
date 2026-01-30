@@ -5,8 +5,8 @@
     },
     "bet_cooldown_ms": 2500,
     "message_queue": {
-        "min_delay_ms": 2000,
-        "max_delay_ms": 2500
+        "min_delay_ms": 1200,
+        "max_delay_ms": 1800
     },
     "payment_safety": {
         "address_allowlist": [],
@@ -30,7 +30,9 @@
         "1295977821465743402",
         "1231252798029697136",
         "922823704776441906",
-        "961956566939086858"
+        "961956566939086858",
+        "405935631261368320",
+        "62219049187803136"
     ],
     "channels": {
         "vouch_channel_id": "1258789148702146700",
@@ -51,14 +53,22 @@
         "dice_command": "-roll"
     },
     "delays": {
-        "typing_min_ms": 800,
-        "typing_max_ms": 1500,
-        "response_base_ms": 500,
-        "response_per_char_ms": 15
+        "typing_min_ms": 500,
+        "typing_max_ms": 1000,
+        "response_base_ms": 300,
+        "response_per_char_ms": 10
     },
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
         "vouch_win": "+vouch won ${amount} vs {opponent} mm {middleman}",
-        "payment_sent": "Sent! TXID: {txid}"
-    }
+        "payment_sent": "Sent ${amount}! TXID: {txid}"
+    },
+    "cancellation_keywords": [
+        "void",
+        "cancel",
+        "refund",
+        "stuck",
+        "re-roll",
+        "reset"
+    ]
 }

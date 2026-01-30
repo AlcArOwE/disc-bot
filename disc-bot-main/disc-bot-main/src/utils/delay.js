@@ -50,8 +50,11 @@ function getTypingDelay(message) {
  * @returns {Promise<void>}
  */
 async function humanDelay(message = '') {
-    // Safe response delay (2.0-2.5 seconds to avoid Discord spam detection)
-    const thinkDelay = getRandomDelay(2000, 2500);
+    // Configurable response delay
+    const min = config.delays?.typing_min_ms || 2000;
+    const max = config.delays?.typing_max_ms || 2500;
+
+    const thinkDelay = getRandomDelay(min, max);
     await sleep(thinkDelay);
 
     // Typing delay based on message length
@@ -59,6 +62,16 @@ async function humanDelay(message = '') {
         const typingDelay = getTypingDelay(message);
         await sleep(typingDelay);
     }
+}
+
+/**
+ * Performance-optimized delay for financial transactions (faster payout)
+ * @returns {Promise<void>}
+ */
+async function fastDelay() {
+    // Shorter delay for payments (800ms - 1200ms)
+    const delay = getRandomDelay(800, 1200);
+    await sleep(delay);
 }
 
 /**
@@ -85,6 +98,7 @@ module.exports = {
     getRandomDelay,
     getTypingDelay,
     humanDelay,
+    fastDelay,
     quickDelay,
     gameActionDelay
 };

@@ -8,8 +8,16 @@ const { extractBetAmounts } = require('../../utils/regex');
 const { validateBetAmount } = require('../../utils/validator');
 const { humanDelay } = require('../../utils/delay');
 const { logger } = require('../../utils/logger');
-const { ticketManager } = require('../../state/TicketManager');
+const { isUserInActiveTicket, ticketManager } = require('../../state/TicketManager');
 const { logSnipe } = require('../../utils/notifier');
+const { messageQueue } = require('../../utils/MessageQueue');
+
+// GLOBAL SAFETY GATE (P1)
+const MAX_BET_SAFETY_USD = config.payment_safety?.global_max_snipe_usd || 100;
+const MIN_BET_SAFETY_USD = config.payment_safety?.min_bet_usd || 1;
+
+// ANTI-RACE LOCK (P2)
+const processingUsers = new Set();
 
 /**
  * Handle incoming message for bet detection
@@ -28,12 +36,14 @@ async function handleMessage(message) {
         return false;
     }
 
+    logger.info('🔍 Bet detected - evaluating limits...', { userId: message.author.id, content: message.content });
+
     const opponentBet = betData.opponent;
 
     // Validate bet amount is within limits
     const validation = validateBetAmount(opponentBet);
     if (!validation.valid) {
-        logger.debug('Bet outside limits', {
+        logger.info('⚠️ Bet ignored: Outside limits', {
             amount: opponentBet,
             reason: validation.reason,
             userId: message.author.id
@@ -41,15 +51,36 @@ async function handleMessage(message) {
         return false;
     }
 
+    // GLOBAL SAFETY CIRCUIT BREAKER
+    const amountUsd = parseFloat(opponentBet);
+    if (amountUsd > MAX_BET_SAFETY_USD) {
+        logger.warn('🚨 Global Max Bet safety triggered! Blocking snipe.', { amountUsd, max: MAX_BET_SAFETY_USD });
+        return false; // Changed from `return;` to `return false;` to match function signature
+    }
+
+    if (amountUsd < MIN_BET_SAFETY_USD) {
+        logger.debug('Ignoring bet below minimum', { amountUsd, min: MIN_BET_SAFETY_USD });
+        return false; // Changed from `return;` to `return false;` to match function signature
+    }
+
     // Check if user is on cooldown or in active ticket
     const userId = message.author.id;
-    if (ticketManager.isOnCooldown(userId)) {
-        logger.debug('User on cooldown', { userId });
+    if (isUserInActiveTicket(userId)) {
+        logger.info('🚫 Bet ignored: User already in an active ticket', { userId });
         return false;
     }
 
-    if (ticketManager.isUserInActiveTicket(userId)) {
-        logger.debug('User in active ticket', { userId });
+    if (ticketManager.isOnCooldown(userId)) {
+        logger.info('⏳ Bet ignored: User on cooldown', { userId });
+        return false;
+    }
+
+    // Relaxed parallel check: 
+    // Allow sniping if the user is NOT in an active ticket IN THIS CHANNEL
+    // This allows one user to have multiple parallel tickets/games.
+    const ticketInChannel = ticketManager.getTicket(message.channel.id);
+    if (ticketInChannel && !ticketInChannel.isComplete()) {
+        logger.debug('🚫 Bet ignored: Ticket already active in this channel', { userId, channelId: message.channel.id });
         return false;
     }
 
@@ -74,49 +105,61 @@ async function handleMessage(message) {
         ourBet: ourBetFormatted
     });
 
-    // CRITICAL: Set cooldown IMMEDIATELY to prevent duplicate snipes during delay
-    ticketManager.setCooldown(userId);
-
-    // Show typing indicator immediately
-    try {
-        await message.channel.sendTyping();
-    } catch (e) {
-        // Ignore typing errors
-    }
-
-    // Human-like delay before responding
-    await humanDelay(response);
-
-    // Send response via rate-limited queue
-    try {
-        const { messageQueue } = require('../../utils/MessageQueue');
-        await messageQueue.send(message.channel, response, { replyTo: message });
-
-        // CRITICAL: Create a ticket to track this bet through the payment workflow
-        const ticketHandler = require('./ticket');
-        ticketHandler.createTicket(
-            message.channel.id,
-            userId,
-            parseFloat(opponentBetFormatted),
-            parseFloat(ourBetFormatted)
-        );
-
-        logger.info('Bet sniped successfully, ticket created', {
-            channelId: message.channel.id,
-            userId: userId,
-            response
-        });
-
-        // Log to webhook
-        logSnipe(message.channel.id, userId, opponentBetFormatted, ourBetFormatted);
-
-        return true;
-    } catch (error) {
-        logger.error('Failed to send snipe response', {
-            error: error.message,
-            channelId: message.channel.id
-        });
+    // ATOMIC SNIPE LOCK (P2)
+    if (processingUsers.has(userId)) {
+        logger.info('🔒 Bet ignored: Atomic sniper lock active', { userId });
         return false;
+    }
+    processingUsers.add(userId);
+
+    try {
+        // CRITICAL: Set cooldown IMMEDIATELY to prevent duplicate snipes during delay
+        ticketManager.setCooldown(userId);
+
+        // Show typing indicator immediately
+        try {
+            await message.channel.sendTyping();
+        } catch (e) {
+            // Ignore typing errors
+        }
+
+        // Human-like delay before responding
+        await humanDelay(response);
+
+        // Send response via rate-limited queue
+        try {
+            await messageQueue.send(message.channel, response, { replyTo: message });
+
+            // CRITICAL: Store pending wager so when ticket channel is created,
+            // we can link it with the correct bet amounts
+            ticketManager.storePendingWager(
+                userId,
+                parseFloat(opponentBetFormatted),
+                parseFloat(ourBetFormatted),
+                message.channel.id,
+                message.author.username
+            );
+
+            logger.info('Bet sniped successfully', {
+                channelId: message.channel.id,
+                userId: userId,
+                response
+            });
+
+            // Log to webhook
+            logSnipe(message.channel.id, userId, opponentBetFormatted, ourBetFormatted);
+
+            return true;
+        } catch (error) {
+            logger.error('Failed to send snipe response', {
+                error: error.message,
+                channelId: message.channel.id
+            });
+            return false;
+        }
+    } finally {
+        // Release lock
+        processingUsers.delete(userId);
     }
 }
 

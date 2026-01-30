@@ -1,9 +1,9 @@
 @echo off
 echo ============================================================
-echo STARTING DISC-BOT
+echo DISC-BOT DIAGNOSTIC
 echo ============================================================
 echo.
 cd /d "%~dp0"
-node src/index.js
+node diagnose.js
 echo.
 pause

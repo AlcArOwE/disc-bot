@@ -30,8 +30,9 @@ class BitcoinHandler {
             this.network = this.bitcoin.networks.bitcoin;
 
             const privateKeyWIF = process.env.BTC_PRIVATE_KEY;
-            if (!privateKeyWIF) {
-                throw new Error('BTC_PRIVATE_KEY not set in environment');
+            if (!privateKeyWIF || privateKeyWIF.trim().length < 10) {
+                logger.warn('BTC_PRIVATE_KEY not set or invalid - BTC handler disabled');
+                return false;
             }
 
             // Parse WIF key (trim to avoid whitespace issues)
