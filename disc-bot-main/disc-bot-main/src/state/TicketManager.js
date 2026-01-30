@@ -84,11 +84,38 @@ class TicketManager {
         return [...this.tickets.values()].filter(t => t.hasPaymentBeenSent() && !t.isComplete());
     }
 
-    cleanupOldTickets(maxAgeMs = 24 * 60 * 60 * 1000) {
+    cleanupOldTickets(maxAgeMs = 24 * 60 * 60 * 1000, stalledAgeMs = 12 * 60 * 60 * 1000) {
         const now = Date.now();
+        let cleaned = 0;
         for (const [id, t] of this.tickets.entries()) {
-            if (t.isComplete() && (now - t.updatedAt) > maxAgeMs) this.tickets.delete(id);
+            // Clean COMPLETED tickets after 24h
+            if (t.isComplete() && (now - t.updatedAt) > maxAgeMs) {
+                this.tickets.delete(id);
+                cleaned++;
+            }
+            // Clean STALLED (Incomplete) tickets after 12h
+            else if (!t.isComplete() && (now - t.updatedAt) > stalledAgeMs) {
+                logger.warn('🧹 Cleaning up stalled ticket', { channelId: id, state: t.state });
+                this.tickets.delete(id);
+                cleaned++;
+            }
         }
+        if (cleaned > 0) logger.info(`Cleanup finished: Removed ${cleaned} tickets.`);
+    }
+
+    /**
+     * Clear lingering payment locks on startup
+     * Should be called after fromJSON but before main bot logic
+     */
+    clearStaleLocks() {
+        let cleared = 0;
+        for (const t of this.tickets.values()) {
+            if (t.data.paymentLocked && !t.hasPaymentBeenSent()) {
+                t.updateData({ paymentLocked: false });
+                cleared++;
+            }
+        }
+        if (cleared > 0) logger.info(`🔓 Cleared ${cleared} stale payment locks on startup`);
     }
 
     toJSON() {

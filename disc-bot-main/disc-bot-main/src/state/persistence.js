@@ -47,6 +47,7 @@ function loadState() {
         const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
         // Pass the whole state object to fromJSON - it's smart enough to handle formats
         ticketManager.fromJSON(state);
+        ticketManager.clearStaleLocks(); // Zenith-Omni: Ensure fresh recovery
         logger.info('State loaded', {
             savedAt: state.savedAt,
             tickets: state.tickets?.length || 0,
