@@ -1,62 +1,40 @@
 @echo off
-title Discord Wagering Bot
-color 0B
-
+title Discord Bot Launcher
 cd /d "%~dp0"
 
 :MENU
 cls
 echo.
-echo  ==============================================================
-echo   DISCORD WAGERING BOT - PRODUCTION SHELL
-echo  ==============================================================
+echo  =========================================
+echo     DISCORD WAGERING BOT LAUNCHER
+echo  =========================================
 echo.
-echo   1 = START BOT
-echo   2 = RUN DIAGNOSTICS
-echo   3 = UPDATE FROM GITHUB
-echo   4 = EDIT .env
-echo   5 = REINSTALL DEPENDENCIES
-echo   6 = EXIT
+echo     1. Start Bot
+echo     2. Run Diagnostics
+echo     3. Update from GitHub
+echo     4. Exit
 echo.
-choice /c 123456 /n /m "Press a key [1-6]: "
+set /p choice=Enter choice (1-4): 
 
-if errorlevel 6 goto EXIT_SCRIPT
-if errorlevel 5 goto CLEAN
-if errorlevel 4 goto ENV_EDIT
-if errorlevel 3 goto UPDATE
-if errorlevel 2 goto DIAGNOSTICS
-if errorlevel 1 goto START_BOT
-
+if "%choice%"=="1" goto RUN_BOT
+if "%choice%"=="2" goto DIAG
+if "%choice%"=="3" goto UPDATE
+if "%choice%"=="4" exit
 goto MENU
 
-:START_BOT
+:RUN_BOT
 cls
+echo Starting bot...
 echo.
-echo  Checking prerequisites...
-echo.
-if not exist .env (
-    echo  [ERROR] .env file is missing!
-    echo  Please create a .env file with your DISCORD_TOKEN.
-    pause
-    goto MENU
-)
-if not exist node_modules (
-    echo  [INFO] Installing dependencies...
-    call npm install
-)
-echo.
-echo  ==============================================================
-echo   BOT IS NOW RUNNING - Close this window to stop.
-echo  ==============================================================
-echo.
-:LOOP
+if not exist node_modules call npm install
+:RESTART
 node src/index.js
 echo.
-echo  [!] Bot stopped. Restarting in 5 seconds...
+echo Bot stopped. Restarting in 5 seconds...
 timeout /t 5 /nobreak >nul
-goto LOOP
+goto RESTART
 
-:DIAGNOSTICS
+:DIAG
 cls
 node diagnose.js
 pause
@@ -64,25 +42,6 @@ goto MENU
 
 :UPDATE
 cls
-echo  Updating from GitHub...
-call git fetch --all
-call git reset --hard origin/main
-echo  Done!
+git pull origin main
 pause
 goto MENU
-
-:ENV_EDIT
-start notepad .env
-goto MENU
-
-:CLEAN
-cls
-echo  Reinstalling dependencies...
-if exist node_modules rmdir /s /q node_modules
-call npm install
-echo  Done!
-pause
-goto MENU
-
-:EXIT_SCRIPT
-exit
