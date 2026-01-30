@@ -22,6 +22,42 @@ const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
 const config = require('../config.json');
+const { execSync } = require('child_process');
+const path = require('path');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STARTUP BANNER - Proves which commit/code is running
+// ═══════════════════════════════════════════════════════════════════════════
+function printStartupBanner() {
+    let gitCommit = 'unknown';
+    try {
+        gitCommit = execSync('git rev-parse HEAD', { encoding: 'utf8', cwd: path.join(__dirname, '..') }).trim().slice(0, 12);
+    } catch (e) {
+        // Git not available or not a repo
+    }
+
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('         DISCORD WAGERING BOT - STARTUP DIAGNOSTICS');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log(`  Git Commit:     ${gitCommit}`);
+    console.log(`  Node Version:   ${process.version}`);
+    console.log(`  Working Dir:    ${process.cwd()}`);
+    console.log(`  Entry Point:    ${__filename}`);
+    console.log(`  Config File:    ${path.resolve(__dirname, '../config.json')}`);
+    console.log('───────────────────────────────────────────────────────────────');
+    console.log(`  Crypto Network: ${config.crypto_network || 'LTC'}`);
+    console.log(`  Simulation:     ${config.simulation_mode ? 'ON' : 'OFF'}`);
+    console.log(`  Live Transfers: ${process.env.ENABLE_LIVE_TRANSFERS === 'true' ? 'ENABLED' : 'DRY-RUN'}`);
+    console.log(`  Cooldown MS:    ${config.bet_cooldown_ms || 2500}`);
+    console.log(`  Max Per TX:     $${config.payment_safety?.max_payment_per_tx || 50}`);
+    console.log(`  Max Daily:      $${config.payment_safety?.max_daily_usd || 500}`);
+    console.log(`  Middlemen:      ${(config.middleman_ids || []).length} configured`);
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('');
+}
+
+printStartupBanner();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STARTUP VALIDATION - Fail fast with clear error messages

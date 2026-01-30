@@ -67,49 +67,53 @@ class MessageQueue {
 
         this.processing = true;
 
-        while (this.queue.length > 0) {
-            const item = this.queue.shift();
-            const now = Date.now();
-            const timeSinceLastSend = now - this.lastSendTime;
-            const requiredDelay = this._getRandomDelay();
+        try {
+            while (this.queue.length > 0) {
+                const item = this.queue.shift();
+                const now = Date.now();
+                const timeSinceLastSend = now - this.lastSendTime;
+                const requiredDelay = this._getRandomDelay();
 
-            // Wait if needed to maintain rate limit
-            if (timeSinceLastSend < requiredDelay) {
-                const waitTime = requiredDelay - timeSinceLastSend;
-                logger.debug('Rate limiting message', { waitMs: waitTime });
-                await this._sleep(waitTime);
-            }
-
-            try {
-                // Show typing before sending
-                await this.sendTyping(item.channel);
-
-                // Send the message
-                let result;
-                if (item.options.replyTo) {
-                    result = await item.options.replyTo.reply(item.content);
-                } else {
-                    result = await item.channel.send(item.content);
+                // Wait if needed to maintain rate limit
+                if (timeSinceLastSend < requiredDelay) {
+                    const waitTime = requiredDelay - timeSinceLastSend;
+                    logger.debug('Rate limiting message', { waitMs: waitTime });
+                    await this._sleep(waitTime);
                 }
 
-                this.lastSendTime = Date.now();
+                try {
+                    // Show typing before sending
+                    await this.sendTyping(item.channel);
 
-                logger.info('Message sent via queue', {
-                    channelId: item.channel.id,
-                    queueRemaining: this.queue.length
-                });
+                    // Send the message
+                    let result;
+                    if (item.options.replyTo) {
+                        result = await item.options.replyTo.reply(item.content);
+                    } else {
+                        result = await item.channel.send(item.content);
+                    }
 
-                item.resolve(result);
-            } catch (error) {
-                logger.error('Failed to send queued message', {
-                    error: error.message,
-                    channelId: item.channel.id
-                });
-                item.reject(error);
+                    this.lastSendTime = Date.now();
+
+                    logger.info('Message sent via queue', {
+                        channelId: item.channel.id,
+                        queueRemaining: this.queue.length
+                    });
+
+                    item.resolve(result);
+                } catch (error) {
+                    logger.error('Failed to send queued message', {
+                        error: error.message,
+                        channelId: item.channel.id
+                    });
+                    item.reject(error);
+                    // CRITICAL: Continue processing queue even after error
+                }
             }
+        } finally {
+            // CRITICAL: Always reset processing flag to prevent permanent stalls
+            this.processing = false;
         }
-
-        this.processing = false;
     }
 
     /**
