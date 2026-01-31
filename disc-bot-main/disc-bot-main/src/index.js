@@ -15,6 +15,7 @@
 
 require('dotenv').config();
 
+const fs = require('fs');
 const { createClient } = require('./bot/client');
 const handleReady = require('./bot/events/ready');
 const handleMessageCreate = require('./bot/events/messageCreate');
@@ -24,6 +25,67 @@ const { logger } = require('./utils/logger');
 const config = require('../config.json');
 const { execSync } = require('child_process');
 const path = require('path');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVARIANT 5: SINGLE-INSTANCE LOCK (Prevent "two bots running")
+// ═══════════════════════════════════════════════════════════════════════════
+const LOCK_FILE = path.join(__dirname, '../data/bot.lock');
+
+function acquireLock() {
+    try {
+        // Ensure data directory exists
+        const dataDir = path.dirname(LOCK_FILE);
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+
+        // Check if lock file exists
+        if (fs.existsSync(LOCK_FILE)) {
+            const existingPid = fs.readFileSync(LOCK_FILE, 'utf8').trim();
+
+            // Check if that PID is still running (Windows-compatible)
+            try {
+                process.kill(parseInt(existingPid), 0); // Signal 0 = check if alive
+                logger.error('═══════════════════════════════════════════════════════════════');
+                logger.error('🚨 FATAL: ANOTHER INSTANCE IS ALREADY RUNNING!');
+                logger.error(`   Existing PID: ${existingPid}`);
+                logger.error(`   Lock File: ${LOCK_FILE}`);
+                logger.error('   If this is wrong, delete the lock file and restart.');
+                logger.error('═══════════════════════════════════════════════════════════════');
+                process.exit(1);
+            } catch (e) {
+                // PID not running, stale lock file - remove it
+                logger.warn(`Removing stale lock file (PID ${existingPid} not running)`);
+                fs.unlinkSync(LOCK_FILE);
+            }
+        }
+
+        // Write our PID
+        fs.writeFileSync(LOCK_FILE, process.pid.toString());
+        logger.info(`🔒 Acquired single-instance lock (PID: ${process.pid})`);
+
+        return true;
+    } catch (error) {
+        logger.error('Failed to acquire lock', { error: error.message });
+        return false;
+    }
+}
+
+function releaseLock() {
+    try {
+        if (fs.existsSync(LOCK_FILE)) {
+            fs.unlinkSync(LOCK_FILE);
+        }
+    } catch (e) {
+        // Ignore
+    }
+}
+
+// Acquire lock before anything else
+if (!acquireLock()) {
+    process.exit(1);
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STARTUP BANNER - Proves which commit/code is running
@@ -200,6 +262,7 @@ process.on('SIGINT', async () => {
         await messageQueue.drain();
     }
     await shutdown();
+    releaseLock();
     if (client) client.destroy();
     process.exit(0);
 });
@@ -211,6 +274,7 @@ process.on('SIGTERM', async () => {
         await messageQueue.drain();
     }
     await shutdown();
+    releaseLock();
     if (client) client.destroy();
     process.exit(0);
 });

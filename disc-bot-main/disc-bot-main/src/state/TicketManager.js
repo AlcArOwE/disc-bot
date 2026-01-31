@@ -46,17 +46,20 @@ class TicketManager {
     }
 
     isOnCooldown(userId) {
-        const last = this.cooldowns.get(userId);
-        if (!last) return false;
-        if (Date.now() - last >= this.cooldownDuration) {
+        const expiresAt = this.cooldowns.get(userId);
+        if (!expiresAt) return false;
+        if (Date.now() >= expiresAt) {
             this.cooldowns.delete(userId);
             return false;
         }
         return true;
     }
 
-    setCooldown(userId) {
-        this.cooldowns.set(userId, Date.now());
+    setCooldown(userId, durationMs = null) {
+        // Use provided duration or fall back to configured cooldown
+        const duration = durationMs || this.cooldownDuration;
+        // Store expiry time instead of start time for clearer logic
+        this.cooldowns.set(userId, Date.now() + duration);
         this.triggerSave();
     }
 

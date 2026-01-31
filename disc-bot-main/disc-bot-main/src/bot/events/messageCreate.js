@@ -1,6 +1,6 @@
 /**
  * Message Create Event Handler
- * Phase 2 Rewrite: Clear routing with explicit channel classification
+ * REWRITE: Bulletproof deduplication and routing
  */
 
 const { logger } = require('../../utils/logger');
@@ -11,15 +11,27 @@ const { ticketManager } = require('../../state/TicketManager');
 const { DICE_RESULT_PATTERN } = require('../../utils/regex');
 const { classifyChannel, ChannelType } = require('../../utils/channelClassifier');
 
-// Debug flag - set DEBUG=1 env var to enable verbose logging
 const DEBUG = process.env.DEBUG === '1';
 
-// IDEMPOTENCY LOCK - Prevent duplicate message processing
-const processedMessages = new Set();
-const MAX_PROCESSED_HISTORY = 1000;
+// INVARIANT 1: Exactly-once processing with TTL (30 minute expiry)
+const processedMessages = new Map(); // messageId -> timestamp
+const MESSAGE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Cleanup every 5 minutes
 
-// ROUTING MUTEX - Prevent concurrent routing for same message
-const routingInProgress = new Set();
+// Periodic cleanup of expired message IDs
+setInterval(() => {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [msgId, timestamp] of processedMessages) {
+        if (now - timestamp > MESSAGE_TTL_MS) {
+            processedMessages.delete(msgId);
+            cleaned++;
+        }
+    }
+    if (cleaned > 0 && DEBUG) {
+        logger.debug(`[DEDUPE_CLEANUP] Removed ${cleaned} expired message IDs`);
+    }
+}, CLEANUP_INTERVAL_MS);
 
 function debugLog(reason, data = {}) {
     if (DEBUG) {
@@ -28,7 +40,22 @@ function debugLog(reason, data = {}) {
 }
 
 /**
- * Log routing decision for every message (Item #13)
+ * MESSAGE_IN log for every inbound message
+ */
+function logMessageIn(message) {
+    if (DEBUG) {
+        logger.debug('[MESSAGE_IN]', {
+            messageId: message.id,
+            channelId: message.channel.id,
+            authorId: message.author.id,
+            contentPreview: message.content?.slice(0, 30) || '',
+            timestamp: Date.now()
+        });
+    }
+}
+
+/**
+ * Log routing decision
  */
 function logRoutingDecision(message, decision, reason) {
     logger.info(`🔀 ROUTING: ${decision}`, {
@@ -47,40 +74,37 @@ function logRoutingDecision(message, decision, reason) {
 async function handleMessageCreate(message) {
     if (!message || !message.id) return;
 
+    // MESSAGE_IN log (per spec)
+    logMessageIn(message);
+
+    const messageId = message.id;
     const channelId = message.channel.id;
     const authorId = message.author.id;
 
-    // 1. DEDUPE (Requirement F/P2)
-    if (processedMessages.has(message.id)) {
-        return; // Silent because it's a double-trigger of the same exact event
-    }
-    processedMessages.add(message.id);
-    if (processedMessages.size > MAX_PROCESSED_HISTORY) {
-        processedMessages.delete(processedMessages.values().next().value);
-    }
-
-    // 2. CHANNEL MUTEX (Requirement E/F)
-    // Prevents race conditions where two messages in the same channel 
-    // trigger state transitions simultaneously.
-    if (routingInProgress.has(channelId)) {
-        debugLog('IGNORE_MUTEX_LOCKED', { channelId });
+    // ═══════════════════════════════════════════════════════════════════════
+    // INVARIANT 1: EXACTLY-ONCE PROCESSING (TTL-based)
+    // ═══════════════════════════════════════════════════════════════════════
+    if (processedMessages.has(messageId)) {
+        debugLog('IGNORE_DUPLICATE_MESSAGE_ID', { messageId });
         return;
     }
-    routingInProgress.add(channelId);
+    // Mark as processed IMMEDIATELY before any async work
+    processedMessages.set(messageId, Date.now());
 
     try {
         const channelClass = classifyChannel(message.channel);
 
-        // 3. EARLY FILTERS (Logged with reason codes per Requirement F)
+        // ═══════════════════════════════════════════════════════════════════
+        // EARLY FILTERS (All logged with reason codes)
+        // ═══════════════════════════════════════════════════════════════════
 
-        // IGNORE_SELF
+        // IGNORE_SELF (except own dice results in tickets)
         if (authorId === message.client.user.id) {
-            // Exceptions for dice results in tickets
             const ticket = ticketManager.getTicket(channelId);
             if (ticket && DICE_RESULT_PATTERN.test(message.content)) {
-                // Allow own dice results to sync state
+                // Allow own dice results to sync game state
             } else {
-                debugLog('IGNORE_SELF', { messageId: message.id });
+                debugLog('IGNORE_SELF', { messageId });
                 return;
             }
         }
@@ -96,81 +120,75 @@ async function handleMessageCreate(message) {
 
         // IGNORE_EXCLUDED
         if (channelClass.type === ChannelType.EXCLUDED) {
-            debugLog('IGNORE_EXCLUDED', { channelId });
+            debugLog('IGNORE_EXCLUDED', { messageId, channelId });
             return;
         }
 
-        // IGNORE_BOT (Except dice bots)
+        // IGNORE_BOT (except dice bots in active game tickets)
         const existingTicket = ticketManager.getTicket(channelId);
         if (message.author.bot) {
             if (isDiceBot(message, existingTicket)) {
-                debugLog('PROCESS_DICE_BOT', { authorId });
+                debugLog('PROCESS_DICE_BOT', { messageId, authorId });
             } else {
-                debugLog('IGNORE_BOT', { authorId });
+                debugLog('IGNORE_BOT', { messageId, authorId });
                 return;
             }
         }
 
-        // 4. ROUTING
+        // ═══════════════════════════════════════════════════════════════════
+        // ROUTING (Priority order)
+        // ═══════════════════════════════════════════════════════════════════
 
-        // Priority 1: Existing Ticket (Requirement B/E)
+        // Priority 1: Existing Ticket
         if (existingTicket) {
             logRoutingDecision(message, 'TICKET_HANDLER', 'Routing to active session');
             await ticketHandler.handleMessage(message);
             return;
         }
 
-        // Priority 2: Public Sniping (Requirement A)
+        // Priority 2: Public Sniping
         if (channelClass.type === ChannelType.PUBLIC && channelClass.allowSnipe) {
             const sniped = await sniperHandler.handleMessage(message);
             if (sniped) {
                 logRoutingDecision(message, 'SNIPED', 'New bet detected');
             } else {
-                debugLog('IGNORE_NOT_BET', { channelId });
+                debugLog('IGNORE_NO_MATCH', { messageId, channelId });
             }
             return;
         }
 
-        // Priority 3: Potential Ticket Trigger (Requirement B)
+        // Priority 3: Potential Ticket Trigger
         if (channelClass.type === ChannelType.TICKET) {
             const handled = await ticketHandler.handleMessage(message);
             if (handled) {
                 logRoutingDecision(message, 'TICKET_INIT', 'New ticket channel matched');
             } else {
-                debugLog('IGNORE_UNHANDLED_TICKET', { channelId });
+                debugLog('IGNORE_UNHANDLED_TICKET', { messageId, channelId });
             }
             return;
         }
 
         // Default: Unrouted
-        debugLog('IGNORE_UNROUTED', { channelId, type: channelClass.type, channelName: message.channel.name });
+        debugLog('IGNORE_WRONG_CHANNEL', { messageId, channelId, type: channelClass.type });
 
     } catch (error) {
-        logger.error('CRITICAL: Message routing failed', {
+        logger.error('[IGNORE_INTERNAL_ERROR]', {
+            messageId,
             error: error.message,
             channelId,
             authorId
         });
-    } finally {
-        routingInProgress.delete(channelId);
     }
 }
 
 /**
  * Check if the message is from a dice bot we should listen to
- * @param {Message} message 
- * @param {Object} ticket 
- * @returns {boolean}
  */
 function isDiceBot(message, ticket) {
     if (!message.author.bot) return false;
-
-    // If we're in a ticket and it's in a state where dice matter,
-    // we listen to any bot that seems to be rolling dice
     if (ticket && (ticket.state === 'GAME_IN_PROGRESS' || ticket.state === 'AWAITING_GAME_START')) {
         return DICE_RESULT_PATTERN.test(message.content);
     }
-
     return false;
 }
 
