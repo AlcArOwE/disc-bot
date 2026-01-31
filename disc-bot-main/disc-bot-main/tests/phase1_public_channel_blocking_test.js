@@ -136,12 +136,17 @@ async function runAllTests() {
             'EMERGENCY_STOP check should be in ticket.js');
     });
 
-    // Test 5: Routing fix verification
-    await runTest('Routing fix for pending wager in public channel', () => {
+    // Test 5: Routing fix verification - now uses channel classifier
+    await runTest('Routing uses channel classifier (not ad-hoc checks)', () => {
         const routingPath = path.join(BASE_DIR, 'src', 'bot', 'events', 'messageCreate.js');
         const routingCode = fs.readFileSync(routingPath, 'utf8');
-        assert(routingCode.includes('userPendingWager && !isMonitoredChannel'),
-            'Pending wager routing should check !isMonitoredChannel');
+        // New routing uses classifyChannel for all routing decisions
+        assert(routingCode.includes('classifyChannel'),
+            'Routing should use classifyChannel');
+        assert(routingCode.includes('ChannelType.PUBLIC'),
+            'Routing should check ChannelType.PUBLIC');
+        assert(routingCode.includes('allowSnipe'),
+            'Routing should check allowSnipe from classifier');
     });
 
     // Test 6: Pre-flight validation in ticket handler

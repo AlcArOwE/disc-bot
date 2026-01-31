@@ -1,6 +1,6 @@
 /**
  * Message Create Event Handler
- * With DEBUG instrumentation for reason-coded early returns
+ * Phase 2 Rewrite: Clear routing with explicit channel classification
  */
 
 const { logger } = require('../../utils/logger');
@@ -9,19 +9,35 @@ const ticketHandler = require('../handlers/ticket');
 const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
 const { DICE_RESULT_PATTERN } = require('../../utils/regex');
+const { classifyChannel, ChannelType } = require('../../utils/channelClassifier');
 
 // Debug flag - set DEBUG=1 env var to enable verbose logging
 const DEBUG = process.env.DEBUG === '1';
 
-// IDEMPOTENCY LOCK (P2)
-// Prevent the same message from being processed multiple times
+// IDEMPOTENCY LOCK - Prevent duplicate message processing
 const processedMessages = new Set();
 const MAX_PROCESSED_HISTORY = 1000;
+
+// ROUTING MUTEX - Prevent concurrent routing for same message
+const routingInProgress = new Set();
 
 function debugLog(reason, data = {}) {
     if (DEBUG) {
         logger.debug(`[MSG_ROUTE] ${reason}`, data);
     }
+}
+
+/**
+ * Log routing decision for every message (Item #13)
+ */
+function logRoutingDecision(message, decision, reason) {
+    logger.info(`🔀 ROUTING: ${decision}`, {
+        channelId: message.channel.id,
+        channelName: message.channel.name || 'DM',
+        authorId: message.author.id,
+        reason,
+        contentPreview: message.content?.slice(0, 30) || ''
+    });
 }
 
 /**
@@ -31,7 +47,9 @@ function debugLog(reason, data = {}) {
 async function handleMessageCreate(message) {
     if (!message || !message.id) return;
 
-    // IDEMPOTENCY CHECK
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 1: IDEMPOTENCY - Prevent duplicate processing
+    // ═══════════════════════════════════════════════════════════════════
     if (processedMessages.has(message.id)) {
         return;
     }
@@ -43,119 +61,104 @@ async function handleMessageCreate(message) {
         processedMessages.delete(first);
     }
 
-    const msgMeta = {
-        channelId: message.channel.id,
-        authorId: message.author.id,
-        content: message.content?.slice(0, 50) || ''
-    };
-
-    // ALWAYS log every message for diagnostics (not just DEBUG mode)
-    const middlemanIds = config.middleman_ids || [];
-    const isFromMM = middlemanIds.includes(message.author.id);
-    logger.info('📨 MSG_RECEIVED', {
-        channelId: message.channel.id,
-        channelName: message.channel.name || 'DM',
-        authorId: message.author.id,
-        isFromMiddleman: isFromMM,
-        contentPreview: message.content?.slice(0, 30) || '',
-        pendingWagers: ticketManager.pendingWagers?.size || 0,
-        hasTicket: !!ticketManager.getTicket(message.channel.id)
-    });
+    // ROUTING MUTEX (Item #20)
+    if (routingInProgress.has(message.id)) {
+        debugLog('MUTEX_BLOCKED', { messageId: message.id });
+        return;
+    }
+    routingInProgress.add(message.id);
 
     try {
-        // Ignore own messages (except dice results we need to record for sync)
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 2: CHANNEL CLASSIFICATION (Items #11, #12)
+        // ═══════════════════════════════════════════════════════════════════
+        const channelClass = classifyChannel(message.channel);
+
+        debugLog('CHANNEL_CLASSIFIED', {
+            channelId: message.channel.id,
+            type: channelClass.type,
+            allowPayment: channelClass.allowPayment,
+            allowSnipe: channelClass.allowSnipe
+        });
+
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 3: EARLY FILTERS
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Ignore own messages (except dice results)
         if (message.author.id === message.client.user.id) {
             const ticket = ticketManager.getTicket(message.channel.id);
             if (ticket && DICE_RESULT_PATTERN.test(message.content)) {
-                logger.debug('Allowing self-message for dice result sync', { channelId: message.channel.id });
-                // Fall through to ticket handler
+                // Fall through for dice sync
             } else {
-                debugLog('IGNORE_SELF', msgMeta);
+                debugLog('IGNORE_SELF', { messageId: message.id });
                 return;
             }
         }
 
         // Handle !wallet command (DM only)
-        const isDM = message.channel.type === 'DM' || message.channel.type === 1;
-        if (isDM && message.content.toLowerCase().trim() === '!wallet') {
+        if (channelClass.type === ChannelType.DM && message.content.toLowerCase().trim() === '!wallet') {
             const ltcAddress = process.env.LTC_PAYOUT_ADDRESS || config.payout_addresses?.LTC || 'Not configured';
             const solAddress = process.env.SOL_PAYOUT_ADDRESS || config.payout_addresses?.SOL || 'Not configured';
-
             await message.reply(
-                `**💰 My Wallet Addresses:**\n\n` +
-                `**LTC:** \`${ltcAddress}\`\n` +
-                `**SOL:** \`${solAddress}\``
+                `**💰 My Wallet Addresses:**\n\n**LTC:** \`${ltcAddress}\`\n**SOL:** \`${solAddress}\``
             );
+            logRoutingDecision(message, 'HANDLED', 'Wallet command in DM');
+            return;
+        }
 
-            logger.info('Wallet addresses sent via DM', { userId: message.author.id });
-            debugLog('HANDLED_WALLET_CMD', msgMeta);
+        // Ignore excluded channels
+        if (channelClass.type === ChannelType.EXCLUDED) {
+            debugLog('IGNORE_EXCLUDED', { channelId: message.channel.id });
             return;
         }
 
         // Ignore bots (except dice bots in ticket contexts)
-        const ticketForChannel = ticketManager.getTicket(message.channel.id);
-        if (message.author.bot && !isDiceBot(message, ticketForChannel)) {
-            debugLog('IGNORE_BOT', msgMeta);
+        const existingTicket = ticketManager.getTicket(message.channel.id);
+        if (message.author.bot && !isDiceBot(message, existingTicket)) {
+            debugLog('IGNORE_BOT', { authorId: message.author.id });
             return;
         }
 
-        // Check if already tracking this channel as a ticket
-        // CRITICAL: Check ticket BEFORE monitored channels filter
-        // so ticket channels work even if not in the monitored list
-        const existingTicket = ticketManager.getTicket(message.channel.id);
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 4: TICKET HANDLER - Existing tickets get priority
+        // ═══════════════════════════════════════════════════════════════════
         if (existingTicket) {
-            debugLog('ROUTE_TO_TICKET', { ...msgMeta, ticketState: existingTicket.state });
+            logRoutingDecision(message, 'TICKET_HANDLER', 'Existing ticket in channel');
             await ticketHandler.handleMessage(message);
             return;
         }
 
-        // ROUTING DECISION: Sniping takes priority in MONITORED public channels
-        const monitoredChannels = config.channels?.monitored_channels || [];
-        const isMonitoredChannel = monitoredChannels.length === 0 || monitoredChannels.includes(message.channel.id);
-
-        if (isMonitoredChannel) {
-            debugLog('ROUTE_TO_SNIPER', { ...msgMeta, reason: 'MONITORED_CHANNEL' });
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 5: PUBLIC CHANNEL - Sniping ONLY (Item #15)
+        // ═══════════════════════════════════════════════════════════════════
+        if (channelClass.type === ChannelType.PUBLIC && channelClass.allowSnipe) {
             const sniped = await sniperHandler.handleMessage(message);
             if (sniped) {
-                logger.info('🎯 Bet sniped in public channel', { channelId: message.channel.id });
+                logRoutingDecision(message, 'SNIPED', 'Bet detected in public channel');
                 return;
             }
-            // If message was in a monitored channel but NOT a bet, we can still check if it's ticket-related
+            // Not a bet - ignore in public channels
+            debugLog('IGNORE_NON_BET_PUBLIC', { channelId: message.channel.id });
+            return;
         }
 
-        // CRITICAL FIX: NEVER create tickets in monitored public channels
-        // ONLY route to ticket handler if:
-        // 1. We're in a ticket-like channel (by name)
-        // 2. A ticket already exists for this channel (handled earlier)
-        const channelName = message.channel.name?.toLowerCase() || '';
-        const isTicketLikeChannel = channelName.startsWith('ticket') ||
-            channelName.startsWith('order-') ||
-            channelName.includes('ticket') ||
-            channelName.includes('order');
-
-        // NEVER route to ticket handler if we're in a monitored public channel
-        // This prevents the bot from sending money in public chat
-        if (isTicketLikeChannel && !isMonitoredChannel) {
-            logger.info('🎫 Routing to TICKET HANDLER', {
-                channelId: message.channel.id,
-                reason: 'TICKET_CHANNEL_NAME',
-                channelName
-            });
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 6: TICKET CHANNEL - Route to ticket handler
+        // ═══════════════════════════════════════════════════════════════════
+        if (channelClass.type === ChannelType.TICKET) {
+            logRoutingDecision(message, 'TICKET_HANDLER', 'Ticket channel by name');
             await ticketHandler.handleMessage(message);
             return;
         }
 
-        // Check if THIS USER has a pending wager
-        // CRITICAL: Only route to ticket handler if NOT in a monitored public channel
-        const userPendingWager = ticketManager.peekPendingWager(message.author.id);
-        if (userPendingWager && !isMonitoredChannel) {
-            logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
-            await ticketHandler.handleMessage(message);
-            return;
-        }
-
-        // Unmatched message
-        debugLog('IGNORE_UNROUTED', msgMeta);
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 7: UNROUTED - No action
+        // ═══════════════════════════════════════════════════════════════════
+        debugLog('IGNORE_UNROUTED', {
+            channelId: message.channel.id,
+            channelType: channelClass.type
+        });
 
     } catch (error) {
         logger.error('Error handling message', {
@@ -163,7 +166,8 @@ async function handleMessageCreate(message) {
             channelId: message.channel.id,
             authorId: message.author.id
         });
-        debugLog('ERROR', { ...msgMeta, error: error.message });
+    } finally {
+        routingInProgress.delete(message.id);
     }
 }
 
