@@ -751,6 +751,19 @@ async function handleGameComplete(channel, ticket, tracker) {
  * Post vouch to vouch channel
  */
 async function postVouch(client, ticket) {
+    // ═══════════════════════════════════════════════════════════════════
+    // VOUCH DEDUPLICATION: Prevent double-posting (Critical Bug Fix)
+    // ═══════════════════════════════════════════════════════════════════
+    if (ticket.data.vouchPosted) {
+        logger.warn('🚫 VOUCH BLOCKED: Already posted for this ticket', { channelId: ticket.channelId });
+        return;
+    }
+
+    // Mark as posted BEFORE attempting (idempotent)
+    ticket.updateData({ vouchPosted: true });
+    saveState();
+    // ═══════════════════════════════════════════════════════════════════
+
     const vouchChannelId = process.env.VOUCH_CHANNEL_ID || config.channels.vouch_channel_id;
 
     if (!vouchChannelId || vouchChannelId === 'YOUR_VOUCH_CHANNEL_ID') {
