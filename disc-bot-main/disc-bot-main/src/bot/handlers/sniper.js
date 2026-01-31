@@ -114,9 +114,11 @@ async function handleMessage(message) {
         } catch (e) { /* ignore */ }
 
         // ═══════════════════════════════════════════════════════════════════
-        // INVARIANT 2: ENFORCE MINIMUM 2000ms DELAY BEFORE RESPONSE
+        // INVARIANT B: ENFORCE MINIMUM 2000ms DELAY BEFORE RESPONSE
+        // Check IS_VERIFICATION at RUNTIME (not module load)
         // ═══════════════════════════════════════════════════════════════════
-        if (!IS_VERIFICATION) {
+        const isVerificationMode = process.env.IS_VERIFICATION === 'true';
+        if (!isVerificationMode) {
             const elapsed = Date.now() - startTime;
             const remainingDelay = Math.max(0, MIN_RESPONSE_DELAY_MS - elapsed);
 
