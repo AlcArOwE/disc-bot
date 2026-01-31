@@ -123,45 +123,48 @@ async function handleMessageCreate(message) {
             // If message was in a monitored channel but NOT a bet, we can still check if it's ticket-related
         }
 
-        // CRITICAL: Check if message is from a MIDDLEMAN for ticket purposes
-        // ONLY route if NOT in a monitored channel (to avoid hijacking public snipes)
-        // or if explicitly ticket-like
-        // RELAXED TICKET ROUTING (Crisis Recovery)
+        // CRITICAL FIX: NEVER create tickets in monitored public channels
+        // ONLY route to ticket handler if:
+        // 1. We're in a ticket-like channel (by name)
+        // 2. A ticket already exists for this channel (handled earlier)
         const channelName = message.channel.name?.toLowerCase() || '';
         const isTicketLikeChannel = channelName.startsWith('ticket') ||
             channelName.startsWith('order-') ||
-            channelName.includes('ticket') || // Broadened
-            channelName.includes('order');  // Broadened
+            channelName.includes('ticket') ||
+            channelName.includes('order');
 
-        if (isFromMM || isTicketLikeChannel) {
+        // NEVER route to ticket handler if we're in a monitored public channel
+        // This prevents the bot from sending money in public chat
+        if (isTicketLikeChannel && !isMonitoredChannel) {
             logger.info('🎫 Routing to TICKET HANDLER', {
                 channelId: message.channel.id,
-                reason: isFromMM ? 'IS_MM' : 'NAME_MATCH',
+                reason: 'TICKET_CHANNEL_NAME',
                 channelName
             });
-            await ticketHandler.handleMessage(message);
-            return;
-        }
+        });
+        await ticketHandler.handleMessage(message);
+        return;
+    }
 
         // Check if THIS USER has a pending wager in a non-monitored channel
         const userPendingWager = ticketManager.peekPendingWager(message.author.id);
-        if (userPendingWager) {
-            logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
-            await ticketHandler.handleMessage(message);
-            return;
-        }
-
-        // Unmatched message
-        debugLog('IGNORE_UNROUTED', msgMeta);
-
-    } catch (error) {
-        logger.error('Error handling message', {
-            error: error.message,
-            channelId: message.channel.id,
-            authorId: message.author.id
-        });
-        debugLog('ERROR', { ...msgMeta, error: error.message });
+    if (userPendingWager) {
+        logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
+        await ticketHandler.handleMessage(message);
+        return;
     }
+
+    // Unmatched message
+    debugLog('IGNORE_UNROUTED', msgMeta);
+
+} catch (error) {
+    logger.error('Error handling message', {
+        error: error.message,
+        channelId: message.channel.id,
+        authorId: message.author.id
+    });
+    debugLog('ERROR', { ...msgMeta, error: error.message });
+}
 }
 
 /**
