@@ -220,7 +220,8 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    logger.error('Unhandled rejection', { reason: String(reason) });
+    logger.error('Unhandled rejection - CRASHING FOR RESTART', { reason: String(reason) });
+    process.exit(1);
 });
 
 // Start the bot

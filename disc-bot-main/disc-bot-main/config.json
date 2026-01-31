@@ -12,7 +12,20 @@
         "address_allowlist": [],
         "max_payment_per_tx": 50,
         "max_daily_usd": 500,
-        "require_crypto_amounts": true
+        "require_crypto_amounts": true,
+        "price_safety": {
+            "max_deviation_percentage": 25,
+            "hard_min_price": {
+                "LTC": 30,
+                "SOL": 50,
+                "BTC": 40000
+            },
+            "hard_max_price": {
+                "LTC": 500,
+                "SOL": 500,
+                "BTC": 250000
+            }
+        }
     },
     "tax_percentage": 0.20,
     "middleman_ids": [
