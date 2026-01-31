@@ -126,10 +126,12 @@ async function handleMessageCreate(message) {
         // CRITICAL: Check if message is from a MIDDLEMAN for ticket purposes
         // ONLY route if NOT in a monitored channel (to avoid hijacking public snipes)
         // or if explicitly ticket-like
+        // RELAXED TICKET ROUTING (Crisis Recovery)
         const channelName = message.channel.name?.toLowerCase() || '';
         const isTicketLikeChannel = channelName.startsWith('ticket') ||
             channelName.startsWith('order-') ||
-            channelName.includes('-ticket-');
+            channelName.includes('ticket') || // Broadened
+            channelName.includes('order');  // Broadened
 
         if (isFromMM || isTicketLikeChannel) {
             logger.info('🎫 Routing to TICKET HANDLER', {

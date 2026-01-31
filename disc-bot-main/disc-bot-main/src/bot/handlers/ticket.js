@@ -136,13 +136,13 @@ async function handleMessage(message) {
  * If middleman sends a message in a ticket-like channel, create a ticket
  */
 async function handlePotentialNewTicket(message) {
-    // Refined ticket patterns (starts with ticket/order or contains -ticket-)
     const channelName = message.channel.name?.toLowerCase() || '';
-    const isTicketLike = channelName.startsWith('ticket') ||
-        channelName.startsWith('order-') ||
-        channelName.includes('-ticket-');
+    // RELAXED TICKET DETECTION (Crisis Recovery)
+    // If ticketHandler.handleMessage was called, we process it regardless of name
+    // unless it's obviously a bot channel or public spam.
+    const isExcluded = channelName.includes('bot-commands') || channelName.includes('general');
 
-    if (!isTicketLike) {
+    if (isExcluded) {
         return false;
     }
 
@@ -614,17 +614,31 @@ async function handleGameInProgress(message, ticket) {
         return true;
     }
 
-    // 2. Respond to middleman "roll" commands
-    if (message.author.id === ticket.data.middlemanId) {
-        const content = message.content.toLowerCase();
-        if (content.includes('roll') || content.includes('your turn') || content.includes(message.client.user.username.toLowerCase())) {
-            await rollDice(message.channel, ticket);
-            return true;
+    // 2. AGGRESSIVE CONVERSATIONAL ROLLING (Crisis Recovery)
+    // Respond to "roll", "go", "your turn", etc. from MM or Opponent
+    const content = message.content.toLowerCase();
+    const isMM = message.author.id === ticket.data.middlemanId || isMiddleman(message.author.id);
+    const isOpponent = message.author.id === ticket.data.opponentId;
+
+    if (isMM || isOpponent || content.includes('bot roll')) {
+        const isRollTrigger = content.includes('roll') ||
+            content.includes('go') ||
+            content.includes('turn') ||
+            content.includes('next');
+
+        if (isRollTrigger) {
+            // Check if we already rolled this round to prevent double-rolling
+            if (!tracker.lastBotRoll) {
+                logger.info('🎲 Aggressive roll trigger detected', { channelId: ticket.channelId, content, from: message.author.tag });
+                await rollDice(message.channel, ticket);
+                return true;
+            }
         }
     }
 
-    // 3. Auto-respond to opponent roll if we haven't rolled yet
+    // 3. AUTO-RESPOND to opponent roll if we haven't rolled yet
     if (tracker.lastOpponentRoll && !tracker.lastBotRoll) {
+        logger.info('🎲 Auto-responding to opponent roll', { channelId: ticket.channelId });
         await rollDice(message.channel, ticket);
         return true;
     }

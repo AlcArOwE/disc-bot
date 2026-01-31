@@ -195,12 +195,16 @@ class TicketManager {
         // Many ticket bots include the username in the channel name (e.g. ticket-haider)
         if (lowerName) {
             for (const [userId, wager] of this.pendingWagers.entries()) {
-                // This is a simplified check - in production we might need to resolve userId to username
-                // or check if the userId itself is in the channel name
-                if (lowerName.includes(userId) || (wager.username && lowerName.includes(wager.username.toLowerCase()))) {
+                const username = wager.username?.toLowerCase() || '';
+
+                // Broadened matching: check if userId OR username is anywhere in the channel name
+                const userIdMatch = lowerName.includes(userId);
+                const nameMatch = username && (lowerName.includes(username) || username.includes(lowerName.replace('ticket-', '').replace('order-', '')));
+
+                if (userIdMatch || nameMatch) {
                     if (now - wager.timestamp <= this.pendingWagerExpiryMs) {
                         this.pendingWagers.delete(userId);
-                        logger.info('🎯 Smart-matched pending wager by name', { userId, channelName });
+                        logger.info('🎯 Smart-matched pending wager by name (Relaxed)', { userId, channelName, matchType: userIdMatch ? 'ID' : 'NAME' });
                         return { userId, ...wager };
                     }
                 }

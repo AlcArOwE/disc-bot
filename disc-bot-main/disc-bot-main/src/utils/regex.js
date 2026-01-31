@@ -24,11 +24,12 @@ const CRYPTO_PATTERNS = {
 // e.g., "@User1 first, @User2 second" or "User1 goes first"
 // Pattern to detect middleman starting the game
 // e.g., "@User1 first, @User2 second" or "User1 goes first" or "ft5 @bot first" or "you first"
-const GAME_START_PATTERN = /(?:ft\d+|game|dice|start|ready|gl|Confirm).*?(?:<@!?(\d+)>|(\b\w+\b)).*?first/i;
+// Added: Broadened to catch "You go", "go first", "your turn", "roll"
+const GAME_START_PATTERN = /(?:ft\d+|game|dice|start|ready|gl|Confirm|roll|go|turn).*?(?:<@!?(\d+)>|(\b\w+\b)).*?(?:first|go|turn|start|roll)/i;
 
 // Pattern to detect dice roll results from dice bots
 // Matches common formats like "rolled a 6", "🎲 6", "[6]"
-const DICE_RESULT_PATTERN = /(?:rolled?\s*(?:a\s*)?|🎲\s*|\[\s*)([1-6])(?:\s*\])?/i;
+const DICE_RESULT_PATTERN = /(?:rolled?\s*(?:a\s*)?|🎲\s*|\[\s*|result:\s*)([1-6])(?:\s*\])?/i;
 
 // Pattern to detect round/game announcements
 const ROUND_PATTERN = /round\s*(\d+)|game\s*(\d+)|ft\s*(\d+)/i;
@@ -39,12 +40,14 @@ const PAYMENT_CONFIRM_PATTERNS = [
     /received?/i,
     /got\s*(?:it|payment)/i,
     /paid/i,
-    /both\s*(?:paid|sent|received)/i,  // "both paid", "both sent"
-    /payments?\s*(?:confirmed|received)/i,  // "payment confirmed"
-    /gl\b/i,  // "gl" (good luck - often said after confirmation)
-    /good\s*luck/i,  // "good luck"
-    /start\s*(?:the\s*)?game/i,  // "start the game"
-    /ready\s*to\s*(?:go|start|play)/i  // "ready to go"
+    /sent/i,
+    /both\s*(?:paid|sent|received)/i,
+    /payments?\s*(?:confirmed|received)/i,
+    /gl\b/i,
+    /good\s*luck/i,
+    /start\s*(?:the\s*)?game/i,
+    /ready\s*to\s*(?:go|start|play)/i,
+    /rolled?/i // Sometimes MM says "paid roll"
 ];
 
 /**
@@ -91,10 +94,11 @@ function extractCryptoAddress(message, network) {
     if (!pattern) return null;
 
     // Split message into words and find matching address
+    // Broadened: Handle prefixes like "Address:" or "LTC:"
     const words = message.split(/\s+/);
     for (const word of words) {
-        // Remove formatting, backticks, and common punctuation
-        const cleaned = word.replace(/[`<>.,;:"'!?()[\]{}]/g, '');
+        // Broadened: Remove common prefixes and punctuation
+        const cleaned = word.replace(/^.*[:=-]/, '').replace(/[`<>.,;:"'!?()[\]{}]/g, '');
         if (pattern.test(cleaned)) {
             return cleaned;
         }
