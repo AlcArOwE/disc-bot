@@ -131,6 +131,9 @@ async function handleMessage(message) {
             case STATES.AWAITING_TICKET:
                 await handleAwaitingTicket(message, ticket);
                 break;
+            case STATES.AWAITING_WAGER_CLARIFICATION:
+                await handleAwaitingWagerClarification(message, ticket);
+                break;
             case STATES.AWAITING_MIDDLEMAN:
                 await handleAwaitingMiddleman(message, ticket);
                 break;
@@ -229,7 +232,21 @@ async function handlePotentialNewTicket(message) {
 
         const ticket = ticketManager.createTicket(message.channel.id, ticketData);
 
-        if (isMM) {
+        if (pendingWager?.isAmbiguous) {
+            ticket.transition(STATES.AWAITING_WAGER_CLARIFICATION, {
+                potentialCandidates: pendingWager.candidates,
+                clarificationReason: 'ambiguous_bets'
+            });
+            const options = [...new Set(pendingWager.candidates.map(c => `$${c.opponentBet}`))].join(', ');
+            await messageQueue.send(message.channel, `🔍 I found multiple potential bets for you (${options}). Which one is this ticket for? Please state the wager amount.`);
+            saveState();
+        } else if (!pendingWager && !isMM) {
+            ticket.transition(STATES.AWAITING_WAGER_CLARIFICATION, {
+                clarificationReason: 'no_wager_found'
+            });
+            await messageQueue.send(message.channel, `👋 I couldn't automatically link this ticket to a wager. What was the bet amount?`);
+            saveState();
+        } else if (isMM) {
             ticket.transition(STATES.AWAITING_MIDDLEMAN);
             ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: message.author.id });
             saveState();
@@ -249,6 +266,69 @@ async function handlePotentialNewTicket(message) {
 
     debugLog('IGNORE_NOT_TICKET_CREATION', { channelName, authorId: message.author.id });
     return false;
+}
+
+/**
+ * Handle clarification when bot is confused about which wager to link
+ */
+async function handleAwaitingWagerClarification(message, ticket) {
+    const betData = extractBetAmounts(message.content);
+    if (!betData) return false;
+
+    const amount = betData.opponent;
+    const candidates = ticket.data.potentialCandidates || [];
+
+    let match = null;
+    if (candidates.length > 0) {
+        // Try to match amount with one of the candidates
+        match = candidates.find(c => Math.abs(c.opponentBet - amount) < 0.01);
+    }
+
+    if (!match) {
+        // Fallback: Check if there's ANY pending wager for this user (or mentions) matching the amount
+        const mentions = message.mentions?.users?.map(u => u.id) || [];
+        const correlationContext = {
+            mentions,
+            messageContent: message.content,
+            betAmount: amount
+        };
+        // This will remove the wager if high-confidence match found
+        match = ticketManager.getAnyPendingWager(message.channel.name, correlationContext);
+    } else {
+        // If we found it in candidates, manually remove it from TicketManager since we are using it
+        ticketManager.removePendingWager(match.id);
+    }
+
+    // Handle the match result from getAnyPendingWager or candidate list
+    if (match && !match.isAmbiguous) {
+        logger.info('🎯 CLARIFICATION SUCCESS', {
+            channelId: ticket.channelId,
+            matchId: match.id || 'new_match',
+            amount
+        });
+
+        ticket.transition(STATES.AWAITING_MIDDLEMAN, {
+            opponentId: match.userId,
+            opponentBet: match.opponentBet,
+            ourBet: match.ourBet,
+            sourceChannelId: match.sourceChannelId,
+            snipeId: match.snipeId,
+            autoDetected: true,
+            clarifiedFrom: amount
+        });
+
+        await messageQueue.send(message.channel, `Perfect. I've linked this ticket to the $${match.opponentBet} bet. Awaiting middleman.`);
+        saveState();
+        return true;
+    } else if (match && match.isAmbiguous) {
+        const options = [...new Set(match.candidates.map(c => `$${c.opponentBet}`))].join(', ');
+        await messageQueue.send(message.channel, `I found multiple bets matching that ($${amount}). Please be more specific or name the opponent.`);
+        return false;
+    } else {
+        // Still no match
+        await messageQueue.send(message.channel, `I still can't find a pending record for $${amount}. Are you sure that's the correct amount?`);
+        return false;
+    }
 }
 
 /**

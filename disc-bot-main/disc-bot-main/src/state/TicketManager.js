@@ -102,7 +102,12 @@ class TicketManager {
      * @param {object} snipeContext - Full snipe context for correlation
      */
     storePendingWager(userId, opponentBet, ourBet, sourceChannelId, username, snipeContext = {}) {
-        this.pendingWagers.set(userId, {
+        if (!this.pendingWagers.has(userId)) {
+            this.pendingWagers.set(userId, []);
+        }
+
+        const wager = {
+            id: `wager-${userId}-${Date.now()}`,
             userId,
             opponentBet,
             ourBet,
@@ -114,20 +119,35 @@ class TicketManager {
             messageId: snipeContext.messageId || null,
             guildId: snipeContext.guildId || null,
             betTermsRaw: snipeContext.betTermsRaw || `${opponentBet}v${opponentBet}`,
-        });
+        };
+
+        this.pendingWagers.get(userId).push(wager);
         logger.info('Stored pending wager', { userId, username, opponentBet, ourBet, messageId: snipeContext.messageId });
+
+        // Limit wagers per user to 5 to prevent memory leak
+        const wagers = this.pendingWagers.get(userId);
+        if (wagers.length > 5) {
+            wagers.shift();
+        }
+
         this.triggerSave();
     }
 
     getPendingWager(userId) {
-        const wager = this.pendingWagers.get(userId);
-        if (!wager) return null;
-        if (Date.now() - wager.timestamp > this.pendingWagerExpiryMs) {
-            this.pendingWagers.delete(userId);
-            return null;
-        }
-        // DO NOT delete here, let the ticket handler delete after link
-        return wager;
+        const wagers = this.pendingWagers.get(userId);
+        if (!wagers || wagers.length === 0) return null;
+
+        // Clean up expired wagers for this user
+        const validWagers = wagers.filter(w => Date.now() - w.timestamp <= this.pendingWagerExpiryMs);
+        this.pendingWagers.set(userId, validWagers);
+
+        if (validWagers.length === 0) return null;
+
+        // If there's only one, return it (backwards compat)
+        if (validWagers.length === 1) return validWagers[0];
+
+        // If multiple, return the most recent one by default but flag as ambiguous
+        return { ...validWagers[validWagers.length - 1], isAmbiguous: true, candidates: validWagers };
     }
 
     /**
@@ -141,85 +161,114 @@ class TicketManager {
         const lowerName = (channelName || '').toLowerCase();
         const { mentions = [], messageContent = '', betAmount = 0 } = context;
 
-        let bestMatch = null;
-        let bestScore = 0;
+        let candidates = [];
 
-        for (const [userId, wager] of this.pendingWagers.entries()) {
-            // Skip expired wagers
-            if (now - wager.timestamp > this.pendingWagerExpiryMs) {
-                continue;
-            }
+        // Flatten all current wagers into a single list with scores
+        for (const [userId, userWagers] of this.pendingWagers.entries()) {
+            for (const wager of userWagers) {
+                // Skip expired wagers
+                if (now - wager.timestamp > this.pendingWagerExpiryMs) {
+                    continue;
+                }
 
-            let score = 0;
-            let matchReasons = [];
+                let score = 0;
+                let matchReasons = [];
 
-            // Priority 1: User ID in channel name (strongest signal)
-            if (lowerName.includes(userId.toLowerCase())) {
-                score += 100;
-                matchReasons.push('userId_in_channel');
-            }
+                // Priority 1: User ID in channel name (strongest signal)
+                if (lowerName.includes(userId.toLowerCase())) {
+                    score += 100;
+                    matchReasons.push('userId_in_channel');
+                }
 
-            // Priority 2: Username in channel name
-            const username = (wager.username || '').toLowerCase();
-            if (username && lowerName.includes(username)) {
-                score += 80;
-                matchReasons.push('username_in_channel');
-            }
+                // Priority 2: Username in channel name
+                const username = (wager.username || '').toLowerCase();
+                if (username && lowerName.includes(username)) {
+                    score += 80;
+                    matchReasons.push('username_in_channel');
+                }
 
-            // Priority 3: User mentioned in ticket messages
-            if (mentions.includes(userId)) {
-                score += 90;
-                matchReasons.push('user_mentioned');
-            }
+                // Priority 3: User mentioned in ticket messages
+                if (mentions.includes(userId)) {
+                    score += 90;
+                    matchReasons.push('user_mentioned');
+                }
 
-            // Priority 4: Bet amount matches
-            if (betAmount > 0 && Math.abs(betAmount - wager.opponentBet) < 0.01) {
-                score += 70;
-                matchReasons.push('bet_amount_match');
-            }
+                // Priority 4: Bet amount matches
+                if (betAmount > 0 && Math.abs(betAmount - wager.opponentBet) < 0.01) {
+                    score += 70;
+                    matchReasons.push('bet_amount_match');
+                }
 
-            // Priority 5: Time proximity (more recent = higher score)
-            const ageMs = now - wager.timestamp;
-            const timeScore = Math.max(0, 30 - Math.floor(ageMs / 10000)); // Decay over 5 mins
-            score += timeScore;
-            if (timeScore > 0) matchReasons.push(`time_proximity(${Math.floor(ageMs / 1000)}s)`);
+                // Priority 5: Time proximity (more recent = higher score)
+                const ageMs = now - wager.timestamp;
+                const timeScore = Math.max(0, 30 - Math.floor(ageMs / 10000)); // Decay over 5 mins
+                score += timeScore;
+                if (timeScore > 0) matchReasons.push(`time_proximity(${Math.floor(ageMs / 1000)}s)`);
 
-            if (score > bestScore) {
-                bestScore = score;
-                bestMatch = { userId, wager, score, matchReasons };
+                if (score >= 30) {
+                    candidates.push({ wager, score, matchReasons });
+                }
             }
         }
 
-        // Require minimum score for confident match
-        if (bestMatch && bestScore >= 50) {
-            this.pendingWagers.delete(bestMatch.userId);
-            this.triggerSave();
-            logger.info('🎯 CORRELATION SUCCESS', {
-                userId: bestMatch.userId,
+        // Sort candidates by score descending
+        candidates.sort((a, b) => b.score - a.score);
+
+        // 1. CLEAR HIGH CONFIDENCE MATCH (Score difference > 30)
+        if (candidates.length > 0 && (candidates.length === 1 || (candidates[0].score - candidates[1].score > 30))) {
+            const best = candidates[0];
+            if (best.score >= 50) {
+                this.removePendingWager(best.wager.id);
+                logger.info('🎯 CORRELATION SUCCESS', {
+                    userId: best.wager.userId,
+                    channelName,
+                    score: best.score,
+                    reasons: best.matchReasons
+                });
+                return best.wager;
+            }
+        }
+
+        // 2. AMBIGUOUS CASE: Multiple similar matches
+        if (candidates.length > 1 && (candidates[0].score - candidates[1].score <= 30)) {
+            logger.warn('⚠️ AMBIGUOUS MATCH FOUND', {
                 channelName,
-                score: bestScore,
-                reasons: bestMatch.matchReasons
+                candidateCount: candidates.length,
+                topScores: candidates.slice(0, 3).map(c => c.score)
             });
-            return bestMatch.wager;
+            return {
+                isAmbiguous: true,
+                candidates: candidates.slice(0, 5).map(c => c.wager)
+            };
         }
 
-        // Fallback: Single wager within time window (low confidence)
-        if (this.pendingWagers.size === 1) {
-            const [userId, wager] = this.pendingWagers.entries().next().value;
-            if (now - wager.timestamp <= this.pendingWagerExpiryMs) {
-                this.pendingWagers.delete(userId);
-                this.triggerSave();
-                logger.info('🎯 FALLBACK LINK (Single pending wager)', { userId });
-                return wager;
-            }
+        // 3. FALLBACK: Return best match if score is reasonable, but mark as low confidence
+        if (candidates.length > 0 && candidates[0].score >= 30) {
+            return {
+                ...candidates[0].wager,
+                isLowConfidence: true,
+                score: candidates[0].score
+            };
         }
 
         logger.warn('⚠️ No confident wager match found', {
             channelName,
-            pendingCount: this.pendingWagers.size,
-            bestScore
+            pendingCount: Array.from(this.pendingWagers.values()).flat().length
         });
         return null;
+    }
+
+    removePendingWager(wagerId) {
+        for (const [userId, wagers] of this.pendingWagers.entries()) {
+            const index = wagers.findIndex(w => w.id === wagerId);
+            if (index !== -1) {
+                wagers.splice(index, 1);
+                if (wagers.length === 0) this.pendingWagers.delete(userId);
+                this.triggerSave();
+                return true;
+            }
+        }
+        return false;
     }
 
     cleanupOldTickets() {
@@ -233,9 +282,12 @@ class TicketManager {
 
     cleanupPendingWagers() {
         const now = Date.now();
-        for (const [userId, wager] of this.pendingWagers.entries()) {
-            if (now - wager.timestamp > this.pendingWagerExpiryMs) {
+        for (const [userId, wagers] of this.pendingWagers.entries()) {
+            const validWagers = wagers.filter(w => now - w.timestamp <= this.pendingWagerExpiryMs);
+            if (validWagers.length === 0) {
                 this.pendingWagers.delete(userId);
+            } else if (validWagers.length !== wagers.length) {
+                this.pendingWagers.set(userId, validWagers);
             }
         }
     }
