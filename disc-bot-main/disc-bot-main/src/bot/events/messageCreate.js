@@ -23,7 +23,7 @@ const routingInProgress = new Set();
 
 function debugLog(reason, data = {}) {
     if (DEBUG) {
-        logger.debug(`[MSG_ROUTE] ${reason}`, data);
+        logger.debug(`[${reason}]`, data);
     }
 }
 
@@ -143,7 +143,7 @@ async function handleMessageCreate(message) {
         }
 
         // Default: Unrouted
-        debugLog('IGNORE_UNROUTED', { channelId, type: channelClass.type });
+        debugLog('IGNORE_UNROUTED', { channelId, type: channelClass.type, channelName: message.channel.name });
 
     } catch (error) {
         logger.error('CRITICAL: Message routing failed', {

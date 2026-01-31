@@ -83,7 +83,9 @@
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
         "vouch_win": "!vouch won ${amount} vs {opponent} mm {middleman}",
-        "payment_sent": "Sent ${amount}! TXID: {txid}"
+        "payment_sent": "Sent ${amount}! TXID: {txid}",
+        "humble_win": "Good game! 🤝 I was lucky this time. Send ${amount} (${network}) to: `{address}`",
+        "humble_loss": "GG, well played! 🤝 You were the better player this round."
     },
     "cancellation_keywords": [
         "void",

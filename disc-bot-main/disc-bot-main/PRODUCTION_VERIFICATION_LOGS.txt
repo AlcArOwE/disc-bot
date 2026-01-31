@@ -383,3 +383,56 @@
 [2026-01-31T09:05:24.286Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"84.9","opponent":null}
 [2026-01-31T09:05:24.299Z] [DEBUG] Automated stability & heartbeat check completed {}
 [2026-01-31T09:06:02.087Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:06:39.125Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"89.9","opponent":null}
+[2026-01-31T09:06:39.156Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:08:22.262Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"90.0","opponent":null}
+[2026-01-31T09:08:22.336Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:09:04.155Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"89.9","opponent":null}
+[2026-01-31T09:09:04.174Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:09:24.186Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"89.9","opponent":null}
+[2026-01-31T09:09:24.329Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:09:40.080Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"94.9","opponent":null}
+[2026-01-31T09:09:40.147Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:09:55.228Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"90.0","opponent":null}
+[2026-01-31T09:09:56.148Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:10:20.941Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"94.9","opponent":null}
+[2026-01-31T09:10:21.244Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:10:25.508Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"90.0","opponent":null}
+[2026-01-31T09:10:27.833Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:11:02.088Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:11:39.764Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"94.9","opponent":null}
+[2026-01-31T09:11:39.986Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:13:23.878Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"95.0","opponent":null}
+[2026-01-31T09:13:26.475Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:14:04.479Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"94.9","opponent":null}
+[2026-01-31T09:14:04.754Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:14:24.626Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"94.9","opponent":null}
+[2026-01-31T09:14:25.114Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:14:41.072Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"99.9","opponent":null}
+[2026-01-31T09:14:41.928Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:14:56.984Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"95.0","opponent":null}
+[2026-01-31T09:15:01.943Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:15:22.260Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"100.0","opponent":null}
+[2026-01-31T09:15:26.889Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:15:28.479Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"95.0","opponent":null}
+[2026-01-31T09:15:34.476Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:16:05.555Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:16:40.666Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"100.0","opponent":null}
+[2026-01-31T09:16:42.673Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:18:23.555Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"100.0","opponent":null}
+[2026-01-31T09:18:23.663Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:19:04.386Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"99.9","opponent":null}
+[2026-01-31T09:19:04.393Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:19:24.562Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"99.9","opponent":null}
+[2026-01-31T09:19:24.722Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:19:41.011Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"104.9","opponent":null}
+[2026-01-31T09:19:41.060Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:19:56.544Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"100.0","opponent":null}
+[2026-01-31T09:19:56.627Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:20:21.984Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"105.0","opponent":null}
+[2026-01-31T09:20:23.017Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:20:28.134Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"100.0","opponent":null}
+[2026-01-31T09:20:31.262Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:21:05.378Z] [DEBUG] Automated stability & heartbeat check completed {}
+[2026-01-31T09:21:40.680Z] [ERROR] 🚨 HEARTBEAT ALERT: Game stalled! {"channelId":"ticket-alpha","state":"GAME_IN_PROGRESS","idleMins":"105.0","opponent":null}
+[2026-01-31T09:21:40.812Z] [DEBUG] Automated stability & heartbeat check completed {}

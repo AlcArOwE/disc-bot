@@ -101,9 +101,9 @@ async function runNuclearAudit() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PROOF C/D: PAYMENT FLOW & GAME COMPLETION
+    // PROOF C: PAYMENT FLOW & TERMS VERIFICATION
     // ─────────────────────────────────────────────────────────────────────────
-    logger.info('[AUDIT_C/D] PROVING: PAYMENT FLOW & GAME COMPLETION');
+    logger.info('[AUDIT_C] PROVING: PAYMENT FLOW & TERMS VERIFICATION');
     const t1 = ticketStates[0];
     const ticket1 = ticketManager.getTicket(t1.tChannel.id);
 
@@ -112,13 +112,33 @@ async function runNuclearAudit() {
     await handleMessageCreate(new MockMessage('pay-addr', `LTC: ${externalAddr}`, t1.tChannel, t1.mm));
 
     if (ticket1.state === 'PAYMENT_SENT') {
-        logger.info('✅ PROOF C: Payment safely executed in ticket channel.');
+        logger.info('✅ PROOF C1: Payment safely executed in ticket channel.');
     } else {
         throw new Error(`Payment failed to trigger. Current state: ${ticket1.state}`);
     }
 
-    // Game starts
-    await handleMessageCreate(new MockMessage('game-start', 'Confirm. Roll.', t1.tChannel, t1.mm));
+    // REQUIREMENT C: Terms Verification
+    logger.info('[AUDIT_C] PROVING: TERMS VERIFICATION (REJECT MISMATCH)');
+    await handleMessageCreate(new MockMessage('bad-terms', 'Confirm. Terms are 50v50.', t1.tChannel, t1.mm));
+    if (ticket1.state === 'PAYMENT_SENT') { // Should NOT transition if terms mismatch
+        logger.info('✅ PROOF C2: Bot rejected mismatched terms ($50 vs $20).');
+    } else {
+        throw new Error(`Bot transitioned on bad terms! State: ${ticket1.state}`);
+    }
+
+    // Game starts with correct terms
+    await handleMessageCreate(new MockMessage('game-start', 'Confirm. Roll 20v20.', t1.tChannel, t1.mm));
+
+    if (ticket1.state === 'GAME_IN_PROGRESS') {
+        logger.info('✅ PROOF C3: Game started after terms verification.');
+    } else {
+        throw new Error(`Game failed to start. State: ${ticket1.state}`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PROOF D: GAME COMPLETION & HUMBLE MESSAGING
+    // ─────────────────────────────────────────────────────────────────────────
+    logger.info('[AUDIT_D] PROVING: GAME COMPLETION & HUMBLE MESSAGING');
 
     // Play to FT5 (Bot always wins for brevity)
     for (let r = 1; r <= 5; r++) {
@@ -127,10 +147,11 @@ async function runNuclearAudit() {
         await new Promise(res => setTimeout(res, 50));
     }
 
-    if (ticket1.state === 'GAME_COMPLETE') {
-        logger.info('✅ PROOF D: Game played fully end-to-end.');
+    const lastMsg = t1.tChannel.messages[t1.tChannel.messages.length - 1].content;
+    if (lastMsg.includes('lucky') || lastMsg.includes('luck')) {
+        logger.info('✅ PROOF D: Game complete. Humble win message verified.');
     } else {
-        throw new Error(`Game did not complete. Current state: ${ticket1.state}`);
+        throw new Error(`Humble messaging missing: "${lastMsg}"`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -15,6 +15,14 @@ const IS_VERIFICATION = process.env.IS_VERIFICATION === 'true';
 // Set of user IDs currently being processed to prevent concurrent overlapping snipes for the same user
 const processingUsers = new Set();
 
+const DEBUG = process.env.DEBUG === '1';
+
+function debugLog(reason, data = {}) {
+    if (DEBUG) {
+        logger.debug(`[${reason}]`, data);
+    }
+}
+
 /**
  * Handle a message in a potential sniping context
  * @param {Message} message - Discord message 
@@ -31,7 +39,7 @@ async function handleMessage(message) {
     // 1b. BET LIMIT CHECK
     const maxAllowed = config.payment_safety?.global_max_snipe_usd || config.betting_limits?.max || 35;
     if (betData.opponent > maxAllowed) {
-        logger.debug('Ignoring bet: Exceeds max allowed', {
+        debugLog('IGNORE_MAX_LIMIT', {
             amount: betData.opponent,
             maxAllowed
         });
@@ -43,7 +51,7 @@ async function handleMessage(message) {
 
     // 3. COOLDOWN CHECK (P2)
     if (ticketManager.isOnCooldown(userId)) {
-        logger.debug('Ignoring bet: User on cooldown', { userId });
+        debugLog('IGNORE_COOLDOWN', { userId });
         return false;
     }
 
@@ -71,7 +79,7 @@ async function handleMessage(message) {
 
     // ATOMIC SNIPE LOCK (P2)
     if (processingUsers.has(userId)) {
-        logger.info('🔒 Bet ignored: Atomic sniper lock active', { userId });
+        debugLog('IGNORE_LOCK_ACTIVE', { userId });
         return false;
     }
     processingUsers.add(userId);

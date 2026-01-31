@@ -11,7 +11,7 @@ const { extractBetAmounts, extractCryptoAddress, extractGameStart, extractDiceRe
 const { isMiddleman, validatePaymentAddress } = require('../../utils/validator');
 const { humanDelay, fastDelay, gameActionDelay } = require('../../utils/delay');
 const { logger, logGame } = require('../../utils/logger');
-const { sendPayment, getPayoutAddress, validateAddress } = require('../../crypto');
+const { sendPayment, getPayoutAddress } = require('../../crypto');
 const { priceOracle } = require('../../crypto/PriceOracle');
 const { isCancellation } = require('../../utils/regex');
 const { logGameResult, logPayment } = require('../../utils/notifier');
@@ -24,6 +24,14 @@ const gameTrackers = new Map();
 
 // Session lock: prevents concurrent processing of messages in the same channel (P2)
 const processingSessions = new Set();
+
+const DEBUG = process.env.DEBUG === '1';
+
+function debugLog(reason, data = {}) {
+    if (DEBUG) {
+        logger.debug(`[${reason}]`, data);
+    }
+}
 
 // LEAK PREVENTION (P4)
 // Register a callback to clean up trackers when a ticket is removed
@@ -56,10 +64,9 @@ async function handleMessage(message) {
 
     // If this is a monitored public channel AND not a ticket channel, block all ticket actions
     if (isMonitoredPublic && !isTicketChannel) {
-        logger.warn('🚫 BLOCKED: Ticket handler called in public channel', {
+        debugLog('IGNORE_TICKET_ROUTED_TO_PUBLIC', {
             channelId,
-            channelName,
-            action: 'TICKET_HANDLER_BLOCKED'
+            channelName
         });
         return false;
     }
@@ -67,7 +74,7 @@ async function handleMessage(message) {
 
     // CONCURRENCY LOCK (P2)
     if (processingSessions.has(channelId)) {
-        logger.debug('🔒 Session locked (concurrency)', { channelId });
+        debugLog('IGNORE_SESSION_LOCKED', { channelId });
         return;
     }
     processingSessions.add(channelId);
@@ -157,31 +164,22 @@ async function handleMessage(message) {
  */
 async function handlePotentialNewTicket(message) {
     const channelName = message.channel.name?.toLowerCase() || '';
-    // RELAXED TICKET DETECTION (Crisis Recovery)
-    // If ticketHandler.handleMessage was called, we process it regardless of name
-    // unless it's obviously a bot channel or public spam.
     const isExcluded = channelName.includes('bot-commands') || channelName.includes('general');
 
     if (isExcluded) {
+        debugLog('IGNORE_EXCLUDED_CHANNEL_TYPE', { channelName });
         return false;
     }
 
-    logger.info('📋 Potential ticket channel detected', {
-        channelId: message.channel.id,
-        channelName,
-        authorId: message.author.id
-    });
-
-    // Check if message is from a middleman - if so, we definitely need to track this
     const isMM = isMiddleman(message.author.id);
-
-    // Try to get pending wager for bet amounts (Atomic Link)
     const pendingWager = ticketManager.getAnyPendingWager(message.channel.name) ||
         ticketManager.getPendingWager(message.author.id);
 
     if (isMM || pendingWager) {
-        logger.info('🎯 Valid ticket activity detected - auto-creating ticket', {
+        logger.info('📋 Potential ticket channel detected', {
             channelId: message.channel.id,
+            channelName,
+            authorId: message.author.id,
             isMM,
             hasPendingWager: !!pendingWager
         });
@@ -210,22 +208,18 @@ async function handlePotentialNewTicket(message) {
             logger.warn('⚠️ No pending wager found - ticket created with zero amounts');
         }
 
-        // Create the ticket
         const ticket = ticketManager.createTicket(message.channel.id, ticketData);
 
         if (isMM) {
-            // Already detected a middleman, transition directly
             ticket.transition(STATES.AWAITING_MIDDLEMAN);
             ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: message.author.id });
             saveState();
 
-            // Extract address from initial MM message
             const address = extractCryptoAddress(message.content, config.crypto_network);
             if (address) {
                 return await handleAwaitingPaymentAddress(message, ticket);
             }
         } else {
-            // User triggered creation, wait for MM
             ticket.transition(STATES.AWAITING_MIDDLEMAN);
             saveState();
         }
@@ -234,6 +228,7 @@ async function handlePotentialNewTicket(message) {
         return true;
     }
 
+    debugLog('IGNORE_NOT_TICKET_CREATION', { channelName, authorId: message.author.id });
     return false;
 }
 
@@ -241,7 +236,6 @@ async function handlePotentialNewTicket(message) {
  * Handle awaiting ticket state
  */
 async function handleAwaitingTicket(message, ticket) {
-    // Wait for opponent to join
     if (message.author.id === ticket.data.opponentId) {
         ticket.transition(STATES.AWAITING_MIDDLEMAN);
         saveState();
@@ -255,19 +249,9 @@ async function handleAwaitingTicket(message, ticket) {
  */
 async function handleAwaitingMiddleman(message, ticket) {
     const userId = message.author.id;
-
-    // DEBUG: Log middleman check
     const isMiddlemanResult = isMiddleman(userId);
-    logger.debug('Middleman check', {
-        channelId: ticket.channelId,
-        userId,
-        isMiddleman: isMiddlemanResult,
-        configMiddlemen: config.middleman_ids?.length || 0
-    });
 
-    // Check if message is from a middleman
     if (isMiddlemanResult) {
-        // Try to update bet amounts if they are still 0
         if (ticket.data.opponentBet === 0) {
             const betData = extractBetAmounts(message.content);
             if (betData) {
@@ -286,19 +270,14 @@ async function handleAwaitingMiddleman(message, ticket) {
 
         ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: userId });
         saveState();
-
-        // SPEED OPTIMIZATION: Warm up the price oracle cache early
         priceOracle.preFetch(config.crypto_network);
-
         logger.info('🟢 Middleman detected! Awaiting address...', { channelId: ticket.channelId, middlemanId: userId });
         return true;
     }
 
+    debugLog('IGNORE_NOT_MIDDLEMAN', { authorId: userId });
     return false;
 }
-
-// Debug flag
-const DEBUG = process.env.DEBUG === '1';
 
 /**
  * Handle awaiting payment address state
@@ -307,69 +286,22 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     const channelId = message.channel.id;
     const channelName = message.channel.name?.toLowerCase() || '';
 
-    // ═══════════════════════════════════════════════════════════════════
-    // CRITICAL SAFETY CHECK #1: NEVER process payments in public channels
-    // ═══════════════════════════════════════════════════════════════════
-    const monitoredChannels = config.channels?.monitored_channels || [];
-    const isMonitoredPublic = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
-
-    // Check if channel name matches ticket patterns
     const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
     const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
 
-    // BLOCK if we're in a monitored public channel
-    if (isMonitoredPublic && !isTicketChannel) {
-        logger.error('🚨 PAYMENT BLOCKED: Attempted payment in PUBLIC channel!', {
-            channelId,
-            channelName,
-            ticketId: ticket.channelId
-        });
+    if (!isTicketChannel) {
+        logger.error('🚨 PAYMENT BLOCKED: Channel does not match ticket patterns!', { channelId, channelName });
         return false;
     }
 
-    // BLOCK if channel doesn't match ticket patterns (when required)
-    if (config.payment_safety?.require_ticket_channel_for_payment && !isTicketChannel) {
-        logger.error('🚨 PAYMENT BLOCKED: Channel does not match ticket patterns!', {
-            channelId,
-            channelName,
-            patterns: ticketPatterns
-        });
-        return false;
-    }
-
-    // Check EMERGENCY_STOP environment variable
-    if (process.env.EMERGENCY_STOP === 'true') {
-        logger.error('🚨 EMERGENCY STOP: All payments halted by environment flag');
-        return false;
-    }
-    // ═══════════════════════════════════════════════════════════════════
-
-    // DEBUG: Log all messages in this state
-    if (DEBUG) {
-        logger.debug('[ADDR_STATE] Message received in AWAITING_PAYMENT_ADDRESS', {
-            authorId: message.author.id,
-            middlemanId: ticket.data.middlemanId,
-            isMiddleman: message.author.id === ticket.data.middlemanId,
-            content: message.content,
-            contentLength: message.content.length
-        });
-    }
-
-    // Only process middleman messages
     if (message.author.id !== ticket.data.middlemanId) {
-        if (DEBUG) {
-            logger.debug('[ADDR_STATE] SKIP - Not from middleman', {
-                authorId: message.author.id,
-                expectedMiddlemanId: ticket.data.middlemanId
-            });
-        }
+        debugLog('IGNORE_NOT_MM_PAYMENT_ADDR', { authorId: message.author.id });
         return false;
     }
 
     const network = config.crypto_network;
     const address = extractCryptoAddress(message.content, network);
 
-    // Also check for bet updates here just in case (e.g. "Send 10 to [address]")
     if (ticket.data.opponentBet === 0) {
         const betData = extractBetAmounts(message.content);
         if (betData) {
@@ -379,124 +311,63 @@ async function handleAwaitingPaymentAddress(message, ticket) {
                 opponentBet: betData.opponent,
                 ourBet: parseFloat(ourBet.toFixed(2))
             });
-            logger.info('💸 Updated bet amounts in address state', {
-                opponentBet: ticket.data.opponentBet,
-                ourBet: ticket.data.ourBet
-            });
         }
-    }
-
-    // DEBUG: Log extraction result
-    if (DEBUG) {
-        logger.debug('[ADDR_STATE] Address extraction result', {
-            network,
-            extractedAddress: address,
-            messageContent: message.content,
-            contentWords: message.content.split(/\s+/)
-        });
     }
 
     if (!address) {
-        // If message is decently long or contains "address", but we failed to parse, warn the user
         if (message.content.length > 20 || message.content.toLowerCase().includes('address')) {
-            await message.reply(`⚠️ I couldn't find a valid ${network} address. Please paste ONLY the address or check format.`);
+            await message.reply(`⚠️ I couldn't find a valid ${network} address.`);
         }
         return false;
     }
 
-    // Validate address before sending
     const validation = validatePaymentAddress(address, network);
     if (!validation.valid) {
-        logger.warn('Invalid payment address', {
-            address,
-            reason: validation.reason,
-            channelId: ticket.channelId
-        });
+        logger.warn('Invalid payment address', { address, reason: validation.reason });
         return false;
     }
 
-    logger.info('Payment address received', {
-        channelId: ticket.channelId,
-        address,
-        network
-    });
-
-    // Check if payment already sent (crash recovery)
     if (ticket.hasPaymentBeenSent()) {
-        logger.warn('Payment already sent for this ticket', {
-            channelId: ticket.channelId,
-            txId: ticket.data.paymentTxId
-        });
+        logger.warn('Payment already sent for this ticket', { channelId: ticket.channelId });
         return true;
     }
 
-    // Calculate payment amount (this would need USD to crypto conversion in production)
-    // For now, we're assuming amounts are already in crypto
-    // Check if payment is already being processed (Lock)
     if (ticket.data.paymentLocked) {
-        logger.warn('Payment already in progress (Locked)', { channelId: ticket.channelId });
+        debugLog('IGNORE_PAYMENT_LOCKED', { channelId: ticket.channelId });
         return false;
     }
 
-    const amountUsd = ticket.data.ourBet; // Assuming ourBet is in USD for conversion
-
+    const amountUsd = ticket.data.ourBet;
     const minAmount = config.betting_limits?.min || 1;
     if (amountUsd < minAmount) {
         logger.error('🚨 PAYMENT REJECTED: Amount below minimum', { amountUsd, minAmount });
-        await messageQueue.send(message.channel, `Payment rejected: Amount $${amountUsd} is below the minimum of $${minAmount}. Please check the bet terms.`);
+        await messageQueue.send(message.channel, `Payment rejected: Amount $${amountUsd} is below $${minAmount}.`);
         return false;
     }
 
-    // Lock payment to prevent race conditions
     ticket.updateData({ paymentLocked: true });
     saveState();
-
-    // SPEED OPTIMIZATION: Use fastDelay instead of humanDelay for payout execution
     await fastDelay();
 
     try {
-        logGame('PAYMENT_ATTEMPT', {
-            channelId: ticket.channelId,
-            network,
-            amountUsd
-        });
-
-        // sendPayment now handles conversion and price fetching internally
         const result = await sendPayment(address, amountUsd, network, ticket.channelId);
-
         if (result.success) {
             ticket.transition(STATES.PAYMENT_SENT, {
                 paymentAddress: address,
                 paymentTxId: result.txId
             });
             saveState();
-
-            // Notify in channel via rate-limited queue
             const confirmMsg = config.response_templates.payment_sent
                 .replace('{txid}', result.txId)
                 .replace('{amount}', amountUsd.toFixed(2));
             await messageQueue.send(message.channel, confirmMsg);
-
-            logGame('PAYMENT_SUCCESS', {
-                channelId: ticket.channelId,
-                txId: result.txId,
-                amount: amountUsd
-            });
-
-            // Log to webhook
             logPayment(ticket.channelId, amountUsd, result.txId, network);
         } else {
             throw new Error(result.error || 'Unknown payment error');
         }
     } catch (error) {
-        logger.error('Payment failed', {
-            channelId: ticket.channelId,
-            error: error.message
-        });
-
+        logger.error('Payment failed', { error: error.message });
         await messageQueue.send(message.channel, `Payment failed: ${error.message}`);
-
-        // Release lock so we can try again
         ticket.updateData({ paymentLocked: false });
         saveState();
     }
@@ -508,24 +379,24 @@ async function handleAwaitingPaymentAddress(message, ticket) {
  * Handle payment sent state - waiting for confirmation
  */
 async function handlePaymentSent(message, ticket) {
-    // Check for middleman confirmation
     if (message.author.id === ticket.data.middlemanId || isMiddleman(message.author.id)) {
         const isConfirm = isPaymentConfirmation(message.content);
         const gameStart = extractGameStart(message.content);
 
         if (isConfirm || gameStart) {
-            // Bot says "Confirm" to acknowledge via queue
-            await messageQueue.send(message.channel, 'Confirm');
+            const betData = extractBetAmounts(message.content);
+            if (betData) {
+                const termsMatch = Math.abs(betData.opponent - ticket.data.opponentBet) < 0.01;
+                if (!termsMatch) {
+                    await messageQueue.send(message.channel, `⚠️ Wait. Terms mismatch. I have $${ticket.data.opponentBet} vs $${ticket.data.ourBet}. Please correct.`);
+                    return false;
+                }
+            }
 
+            await messageQueue.send(message.channel, 'Confirm');
             ticket.transition(STATES.AWAITING_GAME_START);
             saveState();
 
-            logger.info('✅ Payment confirmed (or game started), bot acknowledged', {
-                channelId: ticket.channelId,
-                trigger: isConfirm ? 'PAYMENT_CONFIRM' : 'GAME_START'
-            });
-
-            // If it was a game start, we need to process it immediately in the next state
             if (gameStart) {
                 return await handleAwaitingGameStart(message, ticket);
             }
@@ -539,43 +410,27 @@ async function handlePaymentSent(message, ticket) {
  * Handle awaiting game start state
  */
 async function handleAwaitingGameStart(message, ticket) {
-    // Check for game start from middleman
     if (message.author.id !== ticket.data.middlemanId && !isMiddleman(message.author.id)) {
         return false;
     }
 
     const gameStart = extractGameStart(message.content);
-    if (!gameStart) {
-        return false;
-    }
+    if (!gameStart) return false;
 
-    // Acknowledge the middleman immediately
     await messageQueue.send(message.channel, 'Confirm');
-
-    // Determine if we go first
     const botId = message.client.user.id;
     const botGoesFirst = gameStart.botFirst || gameStart.userId === botId;
 
-    // Initialize score tracker
     const tracker = new ScoreTracker(ticket.channelId);
     gameTrackers.set(ticket.channelId, tracker);
 
     ticket.transition(STATES.GAME_IN_PROGRESS, { botGoesFirst });
     saveState();
 
-    logger.info('Game started with middleman setup', {
-        channelId: ticket.channelId,
-        botGoesFirst,
-        content: message.content
-    });
-
-    // If we go first, roll dice automatically
     if (botGoesFirst) {
-        logger.info('🎲 Bot goes first - auto-rolling...', { channelId: ticket.channelId });
         await gameActionDelay();
         await rollDice(message.channel, ticket);
     }
-
     return true;
 }
 
@@ -585,16 +440,13 @@ async function handleAwaitingGameStart(message, ticket) {
 async function handleGameInProgress(message, ticket) {
     let tracker = gameTrackers.get(ticket.channelId);
 
-    // GAME STATE RECOVERY (P3)
-    // If tracker is missing (e.g. after restart), reconstruct it from ticket data
     if (!tracker && ticket.data.gameScores) {
-        logger.info('🔄 Reconstructing ScoreTracker from persisted state', { channelId: ticket.channelId });
         tracker = ScoreTracker.fromJSON({
             ticketId: ticket.channelId,
             winsNeeded: config.game_settings.wins_to_complete,
             botWinsTies: config.game_settings.bot_wins_ties,
             scores: ticket.data.gameScores,
-            rounds: ticket.data.gameHistory || [], // We'll start tracking history if we weren't
+            rounds: ticket.data.gameHistory || [],
             startedAt: ticket.createdAt,
             completedAt: null,
             winner: null
@@ -602,36 +454,19 @@ async function handleGameInProgress(message, ticket) {
         gameTrackers.set(ticket.channelId, tracker);
     }
 
-    if (!tracker) {
-        logger.error('No tracker for game and no recovery data', { channelId: ticket.channelId });
-        return false;
-    }
+    if (!tracker) return false;
 
-    // Check if it's our turn to respond to a dice roll
-    // This depends on the specific dice bot being used
-
-    // DISCORD-FIRST TRUTH (P4)
-    // Instead of faking rolls locally, we record results from the actual dice bot output
-
-    // 1. Check if this is a dice result from the dice bot
     const roll = extractDiceResult(message.content);
     if (roll) {
-        // If it's the bot's own roll
         if (message.author.id === message.client.user.id) {
             tracker.lastBotRoll = roll;
-            logger.debug('🤖 Recorded bot roll from Discord', { roll });
         } else {
-            // Assume any other roll in this channel is the opponent
             tracker.lastOpponentRoll = roll;
-            logger.debug('👤 Recorded opponent roll from Discord', { roll });
         }
 
-        // If we have both rolls, record the round
         if (tracker.lastBotRoll && tracker.lastOpponentRoll) {
             const botRoll = tracker.lastBotRoll;
             const opponentRoll = tracker.lastOpponentRoll;
-
-            // Clear for next round
             tracker.lastBotRoll = null;
             tracker.lastOpponentRoll = null;
 
@@ -644,40 +479,24 @@ async function handleGameInProgress(message, ticket) {
 
             if (result.gameOver) {
                 await handleGameComplete(message.channel, ticket, tracker);
-            } else {
-                // If it's our turn to go first next round, roll now
-                // (Depends on who won the last round in some rules, but usually alternating)
-                // For now, let the middleman call it or respond to opponent roll
             }
         }
         return true;
     }
 
-    // 2. AGGRESSIVE CONVERSATIONAL ROLLING (Crisis Recovery)
-    // Respond to "roll", "go", "your turn", etc. from MM or Opponent
     const content = message.content.toLowerCase();
     const isMM = message.author.id === ticket.data.middlemanId || isMiddleman(message.author.id);
     const isOpponent = message.author.id === ticket.data.opponentId;
 
     if (isMM || isOpponent || content.includes('bot roll')) {
-        const isRollTrigger = content.includes('roll') ||
-            content.includes('go') ||
-            content.includes('turn') ||
-            content.includes('next');
-
-        if (isRollTrigger) {
-            // Check if we already rolled this round to prevent double-rolling
-            if (!tracker.lastBotRoll) {
-                logger.info('🎲 Aggressive roll trigger detected', { channelId: ticket.channelId, content, from: message.author.tag });
-                await rollDice(message.channel, ticket);
-                return true;
-            }
+        const isRollTrigger = content.includes('roll') || content.includes('go') || content.includes('turn') || content.includes('next');
+        if (isRollTrigger && !tracker.lastBotRoll) {
+            await rollDice(message.channel, ticket);
+            return true;
         }
     }
 
-    // 3. AUTO-RESPOND to opponent roll if we haven't rolled yet
     if (tracker.lastOpponentRoll && !tracker.lastBotRoll) {
-        logger.info('🎲 Auto-responding to opponent roll', { channelId: ticket.channelId });
         await rollDice(message.channel, ticket);
         return true;
     }
@@ -686,19 +505,12 @@ async function handleGameInProgress(message, ticket) {
 }
 
 /**
- * Roll dice and handle result
+ * Roll dice
  */
 async function rollDice(channel, ticket) {
     await gameActionDelay();
-
-    // DISCORD-FIRST TRUTH (P4)
-    // We send the command but we DO NOT record it yet.
-    // The handleGameInProgress function will see the bot's own message (result)
-    // and record it then. This ensures 100% sync with the server dice bot.
-
     const diceCmd = config.game_settings.dice_command || '-roll';
     await messageQueue.send(channel, diceCmd);
-    logger.info('🎲 Sent dice command, awaiting Discord result...', { channelId: ticket.channelId });
 }
 
 /**
@@ -712,141 +524,79 @@ async function handleGameComplete(channel, ticket, tracker) {
     saveState();
 
     const didWin = tracker.didBotWin();
-
-    logGame('GAME_RESULT', {
-        channelId: ticket.channelId,
-        winner: tracker.winner,
-        finalScore: tracker.scores,
-        didWin
-    });
-
-    // Log to webhook (calculate net profit roughly)
-    const profit = didWin ? ticket.data.opponentBet : -ticket.data.ourBet;
-    logGameResult(ticket.channelId, tracker.winner, profit);
+    logGameResult(ticket.channelId, tracker.winner, didWin ? ticket.data.opponentBet : -ticket.data.ourBet);
 
     if (didWin) {
-        // Post payout address with amount owed
         const payoutAddr = getPayoutAddress();
-        const amountOwed = ticket.data.opponentBet;
         const network = config.crypto_network || 'LTC';
+        const humbleWin = config.response_templates.humble_win
+            .replace('{amount}', ticket.data.opponentBet.toFixed(2))
+            .replace('{network}', network)
+            .replace('{address}', payoutAddr);
 
         await humanDelay();
-        await messageQueue.send(channel, `GG! 🎉 Send $${amountOwed.toFixed(2)} (${network}) to:`);
-        await humanDelay();
-        await messageQueue.send(channel, `\`${payoutAddr}\``);
+        await messageQueue.send(channel, humbleWin);
 
-        // Post vouch after a delay
-        logger.info('🏆 Bot won! Posting vouch in 5 seconds...', { channelId: ticket.channelId });
         setTimeout(async () => {
-            try {
-                await postVouch(channel.client, ticket);
-            } catch (e) {
-                logger.error('Failed to post vouch', { error: e.message });
-            }
+            try { await postVouch(channel.client, ticket); } catch (e) { logger.error('Vouch failed', { error: e.message }); }
         }, 5000);
     } else {
         await humanDelay();
-        await messageQueue.send(channel, 'GG, well played!');
+        await messageQueue.send(channel, config.response_templates.humble_loss || 'GG, well played! 🤝');
     }
 
-    // Clean up
     gameTrackers.delete(ticket.channelId);
     ticketManager.removeTicket(ticket.channelId);
 }
 
 /**
- * Post vouch to vouch channel
+ * Post vouch
  */
 async function postVouch(client, ticket) {
     const vouchChannelId = process.env.VOUCH_CHANNEL_ID || config.channels.vouch_channel_id;
-
-    if (!vouchChannelId || vouchChannelId === 'YOUR_VOUCH_CHANNEL_ID') {
-        logger.warn('Vouch channel not configured');
-        return;
-    }
-
-    // IDEMPOTENCY: Check if vouch already posted (Requirement D)
-    if (ticket.data.vouchPosted) {
-        logger.warn('🚫 Vouch already posted for this ticket, skipping.', { channelId: ticket.channelId });
-        return;
-    }
+    if (!vouchChannelId || ticket.data.vouchPosted) return;
 
     try {
         const channel = client.channels.cache.get(vouchChannelId) || await client.channels.fetch(vouchChannelId);
-        if (!channel) {
-            logger.error('Vouch channel not found', { vouchChannelId });
-            return;
-        }
+        if (!channel) return;
 
-        // Mark as posted BEFORE sending to avoid race condition
         ticket.updateData({ vouchPosted: true });
-        const { saveState } = require('../../state/persistence');
         saveState();
 
-        const opponentId = ticket.data.opponentId;
-        const middlemanId = ticket.data.middlemanId;
-        const amount = ticket.data.opponentBet;
-
-        // Guard against missing data (can happen with auto-detected tickets)
-        if (!opponentId) {
-            logger.warn('Cannot post vouch: no opponent ID', { channelId: ticket.channelId });
-            return;
-        }
-
         const vouchMsg = config.response_templates.vouch_win
-            .replace('{amount}', amount.toFixed(2))
-            .replace('{opponent}', `<@${opponentId}>`)
-            .replace('{middleman}', middlemanId ? `<@${middlemanId}>` : 'MM');
+            .replace('{amount}', ticket.data.opponentBet.toFixed(2))
+            .replace('{opponent}', `<@${ticket.data.opponentId}>`)
+            .replace('{middleman}', ticket.data.middlemanId ? `<@${ticket.data.middlemanId}>` : 'MM');
 
         await messageQueue.send(channel, vouchMsg);
-        logger.info('Vouch posted', { channelId: vouchChannelId, opponent: opponentId, amount });
     } catch (error) {
-        logger.error('Failed to post vouch', { error: error.message });
-        // Optional: Reset vouchPosted if we want to retry, but usually safer to stay marked
-        // if we suspect the message actually went through. 
+        logger.error('Vouch error', { error: error.message });
     }
 }
 
 /**
- * Handle message updates (Ninja-Edit detection)
+ * Handle message updates
  */
 async function handleMessageUpdate(oldMessage, newMessage) {
     const channelId = oldMessage.channel.id;
     const ticket = ticketManager.getTicket(channelId);
     if (!ticket) return;
 
-    logger.warn('🕵️ Ninja-Edit detected!', {
-        channelId,
-        author: oldMessage.author.tag,
-        oldContent: oldMessage.content,
-        newContent: newMessage.content
-    });
-
-    // Check for critical fraud (editing addresses or rolls)
     const network = config.crypto_network;
     const oldAddr = extractCryptoAddress(oldMessage.content, network);
     const newAddr = extractCryptoAddress(newMessage.content, network);
 
     if (oldAddr && newAddr && oldAddr !== newAddr) {
-        logger.error('🚨 FRAUD ALERT: Crypto address edited in ticket!', { channelId, oldAddr, newAddr });
-        await messageQueue.send(oldMessage.channel, '⚠️ CRITICAL: Crypto address modification detected. Flow halted for safety.');
-    }
-
-    const oldRoll = extractDiceResult(oldMessage.content);
-    const newRoll = extractDiceResult(newMessage.content);
-    if (oldRoll !== null && newRoll !== null && oldRoll !== newRoll) {
-        logger.error('🚨 FRAUD ALERT: Dice roll edited in ticket!', { channelId, oldRoll, newRoll });
-        await messageQueue.send(oldMessage.channel, '⚠️ CRITICAL: Dice roll modification detected.');
+        await messageQueue.send(oldMessage.channel, '⚠️ CRITICAL: Crypto address modification detected.');
     }
 }
 
 /**
- * Handle channel deletion (P4)
+ * Handle channel deletion
  */
 async function handleChannelDelete(channel) {
     const channelId = channel.id;
     if (ticketManager.getTicket(channelId)) {
-        logger.warn('🗑️ Ticket channel deleted manually - purging state', { channelId });
         ticketManager.removeTicket(channelId);
         saveState();
     }
