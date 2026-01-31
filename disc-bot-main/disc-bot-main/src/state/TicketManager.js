@@ -165,7 +165,8 @@ class TicketManager {
 
         // Flatten all current wagers into a single list with scores
         for (const [userId, userWagers] of this.pendingWagers.entries()) {
-            for (const wager of userWagers) {
+            const wagers = Array.isArray(userWagers) ? userWagers : [userWagers];
+            for (const wager of wagers) {
                 // Skip expired wagers
                 if (now - wager.timestamp > this.pendingWagerExpiryMs) {
                     continue;
@@ -320,7 +321,8 @@ class TicketManager {
             this.tickets.set(t.channelId, t);
         }
         for (const [userId, wager] of wagersData) {
-            this.pendingWagers.set(userId, wager);
+            // Legacy support: convert single wagers to arrays
+            this.pendingWagers.set(userId, Array.isArray(wager) ? wager : [wager]);
         }
         for (const [userId, timestamp] of cooldownsData) {
             this.cooldowns.set(userId, timestamp);
