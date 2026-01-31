@@ -107,6 +107,7 @@ class MessageQueue {
                     }
 
                     this.lastSendTime = Date.now();
+                    this.errorCount = 0; // Reset consecutive errors
 
                     logger.info('Message sent via queue', {
                         channelId: item.channel.id,
@@ -115,14 +116,26 @@ class MessageQueue {
 
                     item.resolve(result);
                 } catch (error) {
+                    this.errorCount = (this.errorCount || 0) + 1;
                     logger.error('Failed to send queued message', {
                         error: error.message,
-                        channelId: item.channel.id
+                        channelId: item.channel.id,
+                        consecutiveErrors: this.errorCount
                     });
+
+                    // If rate limited, wait extra time
+                    if (error.message.includes('rate limit') || error.code === 429) {
+                        const backoff = Math.min(5000 * this.errorCount, 30000);
+                        logger.warn(`🛑 Rate limit backoff: ${backoff}ms`);
+                        await this._sleep(backoff);
+                    }
+
                     item.reject(error);
                     // CRITICAL: Continue processing queue even after error
                 }
             }
+        } catch (fatalError) {
+            logger.error('FATAL: MessageQueue loop crashed!', { error: fatalError.message });
         } finally {
             // CRITICAL: Always reset processing flag to prevent permanent stalls
             this.processing = false;

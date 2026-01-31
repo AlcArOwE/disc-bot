@@ -12,7 +12,7 @@
         "address_allowlist": [],
         "max_payment_per_tx": 50,
         "max_daily_usd": 500,
-        "global_max_snipe_usd": 50,
+        "global_max_snipe_usd": 35,
         "require_crypto_amounts": true,
         "require_ticket_channel_for_payment": true,
         "ticket_channel_patterns": [
@@ -82,7 +82,7 @@
     },
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
-        "vouch_win": "+vouch won ${amount} vs {opponent} mm {middleman}",
+        "vouch_win": "!vouch won ${amount} vs {opponent} mm {middleman}",
         "payment_sent": "Sent ${amount}! TXID: {txid}"
     },
     "cancellation_keywords": [

@@ -42,7 +42,7 @@ class TicketStateMachine {
         this.createdAt = Date.now();
         this.updatedAt = Date.now();
         this.history = [];
-        
+
         // Ticket data
         this.data = {
             opponentId: initialData.opponentId || null,
@@ -56,7 +56,7 @@ class TicketStateMachine {
             ...initialData
         };
     }
-    
+
     /**
      * Get current state
      * @returns {string}
@@ -64,7 +64,7 @@ class TicketStateMachine {
     getState() {
         return this.state;
     }
-    
+
     /**
      * Check if transition to new state is valid
      * @param {string} newState - Target state
@@ -74,7 +74,7 @@ class TicketStateMachine {
         const validTransitions = TRANSITIONS[this.state] || [];
         return validTransitions.includes(newState);
     }
-    
+
     /**
      * Transition to a new state
      * @param {string} newState - Target state
@@ -90,11 +90,11 @@ class TicketStateMachine {
             });
             return false;
         }
-        
+
         const previousState = this.state;
         this.state = newState;
         this.updatedAt = Date.now();
-        
+
         // Record history
         this.history.push({
             from: previousState,
@@ -102,19 +102,23 @@ class TicketStateMachine {
             timestamp: this.updatedAt,
             data: additionalData
         });
-        
+
         // Merge additional data
         Object.assign(this.data, additionalData);
-        
+
         logger.info('State transition', {
             channelId: this.channelId,
             from: previousState,
             to: newState
         });
-        
+
+        // Require here to avoid circular dependency
+        const { ticketManager } = require('./TicketManager');
+        ticketManager.triggerSave();
+
         return true;
     }
-    
+
     /**
      * Update data without changing state
      * @param {object} newData - Data to merge
@@ -122,8 +126,10 @@ class TicketStateMachine {
     updateData(newData) {
         Object.assign(this.data, newData);
         this.updatedAt = Date.now();
+        const { ticketManager } = require('./TicketManager');
+        ticketManager.triggerSave();
     }
-    
+
     /**
      * Check if ticket is in a terminal state
      * @returns {boolean}
@@ -131,7 +137,7 @@ class TicketStateMachine {
     isComplete() {
         return [STATES.GAME_COMPLETE, STATES.CANCELLED].includes(this.state);
     }
-    
+
     /**
      * Check if payment has been made
      * @returns {boolean}
@@ -139,7 +145,7 @@ class TicketStateMachine {
     hasPaymentBeenSent() {
         return this.data.paymentTxId !== null;
     }
-    
+
     /**
      * Serialize for persistence
      * @returns {object}
@@ -154,7 +160,7 @@ class TicketStateMachine {
             data: this.data
         };
     }
-    
+
     /**
      * Restore from serialized data
      * @param {object} json - Serialized state machine

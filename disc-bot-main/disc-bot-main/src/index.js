@@ -140,6 +140,9 @@ function validateStartup() {
     }
 
     logger.info('✅ Startup validation passed');
+    logger.info(`  Persistence:    ${path.resolve(__dirname, '../data/state.json')}`);
+    logger.info(`  LTC Enabled:    ${!!process.env.LTC_PRIVATE_KEY ? 'YES' : 'NO'}`);
+    logger.info(`  SOL Enabled:    ${!!process.env.SOL_PRIVATE_KEY ? 'YES' : 'NO'}`);
 }
 
 validateStartup();

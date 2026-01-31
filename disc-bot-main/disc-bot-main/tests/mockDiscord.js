@@ -19,10 +19,11 @@ class MockUser {
  * Mock Discord Channel
  */
 class MockChannel {
-    constructor(id, name = 'test-channel', type = 'GUILD_TEXT') {
+    constructor(id, name = 'test-channel', type = 'GUILD_TEXT', client = null) {
         this.id = id;
         this.name = name;
         this.type = type;
+        this.client = client;
         this.messages = [];
         this.typingCount = 0;
     }
@@ -54,7 +55,7 @@ class MockMessage {
         this.channel = channel;
         this.author = author;
         this.createdTimestamp = Date.now();
-        this.client = {
+        this.client = channel?.client || {
             user: new MockUser('bot-id', 'Bot', true)
         };
     }
@@ -108,6 +109,38 @@ class MockDiscordClient {
     createDMChannel() {
         const channel = this.createChannel('dm-789', null, 'DM');
         channel.type = 1; // Discord.js DM type
+        return channel;
+    }
+
+    // Support for both simple and complex Discord.js channel access
+    get channels() {
+        const map = this._channelsMap || new Map();
+        this._channelsMap = map;
+
+        // Return a proxy-like object that acts like a Map AND has .cache/.fetch
+        const handler = {
+            get: (id) => map.get(id),
+            has: (id) => map.has(id),
+            set: (id, val) => map.set(id, val),
+            delete: (id) => map.delete(id),
+            clear: () => map.clear(),
+            fetch: async (id) => map.get(id),
+            cache: map,
+            values: () => map.values(),
+            entries: () => map.entries(),
+            [Symbol.iterator]: () => map[Symbol.iterator]()
+        };
+        return handler;
+    }
+
+    set channels(val) {
+        // Ignore or handle
+    }
+
+    createChannel(id, name, type = 'GUILD_TEXT') {
+        const channel = new MockChannel(id, name, type, this);
+        this._channelsMap = this._channelsMap || new Map();
+        this._channelsMap.set(id, channel);
         return channel;
     }
 }

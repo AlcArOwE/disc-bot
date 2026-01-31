@@ -440,6 +440,13 @@ async function handleAwaitingPaymentAddress(message, ticket) {
 
     const amountUsd = ticket.data.ourBet; // Assuming ourBet is in USD for conversion
 
+    const minAmount = config.betting_limits?.min || 1;
+    if (amountUsd < minAmount) {
+        logger.error('🚨 PAYMENT REJECTED: Amount below minimum', { amountUsd, minAmount });
+        await messageQueue.send(message.channel, `Payment rejected: Amount $${amountUsd} is below the minimum of $${minAmount}. Please check the bet terms.`);
+        return false;
+    }
+
     // Lock payment to prevent race conditions
     ticket.updateData({ paymentLocked: true });
     saveState();
@@ -751,19 +758,6 @@ async function handleGameComplete(channel, ticket, tracker) {
  * Post vouch to vouch channel
  */
 async function postVouch(client, ticket) {
-    // ═══════════════════════════════════════════════════════════════════
-    // VOUCH DEDUPLICATION: Prevent double-posting (Critical Bug Fix)
-    // ═══════════════════════════════════════════════════════════════════
-    if (ticket.data.vouchPosted) {
-        logger.warn('🚫 VOUCH BLOCKED: Already posted for this ticket', { channelId: ticket.channelId });
-        return;
-    }
-
-    // Mark as posted BEFORE attempting (idempotent)
-    ticket.updateData({ vouchPosted: true });
-    saveState();
-    // ═══════════════════════════════════════════════════════════════════
-
     const vouchChannelId = process.env.VOUCH_CHANNEL_ID || config.channels.vouch_channel_id;
 
     if (!vouchChannelId || vouchChannelId === 'YOUR_VOUCH_CHANNEL_ID') {
@@ -771,16 +765,27 @@ async function postVouch(client, ticket) {
         return;
     }
 
+    // IDEMPOTENCY: Check if vouch already posted (Requirement D)
+    if (ticket.data.vouchPosted) {
+        logger.warn('🚫 Vouch already posted for this ticket, skipping.', { channelId: ticket.channelId });
+        return;
+    }
+
     try {
-        const vouchChannel = await client.channels.fetch(vouchChannelId);
-        if (!vouchChannel) {
-            logger.error('Could not find vouch channel', { channelId: vouchChannelId });
+        const channel = client.channels.cache.get(vouchChannelId) || await client.channels.fetch(vouchChannelId);
+        if (!channel) {
+            logger.error('Vouch channel not found', { vouchChannelId });
             return;
         }
 
+        // Mark as posted BEFORE sending to avoid race condition
+        ticket.updateData({ vouchPosted: true });
+        const { saveState } = require('../../state/persistence');
+        saveState();
+
         const opponentId = ticket.data.opponentId;
         const middlemanId = ticket.data.middlemanId;
-        const amount = ticket.data.opponentBet || 0;
+        const amount = ticket.data.opponentBet;
 
         // Guard against missing data (can happen with auto-detected tickets)
         if (!opponentId) {
@@ -793,15 +798,12 @@ async function postVouch(client, ticket) {
             .replace('{opponent}', `<@${opponentId}>`)
             .replace('{middleman}', middlemanId ? `<@${middlemanId}>` : 'MM');
 
-        await messageQueue.send(vouchChannel, vouchMsg);
-
-        logger.info('Vouch posted', {
-            channelId: vouchChannelId,
-            opponent: opponentId,
-            amount
-        });
+        await messageQueue.send(channel, vouchMsg);
+        logger.info('Vouch posted', { channelId: vouchChannelId, opponent: opponentId, amount });
     } catch (error) {
         logger.error('Failed to post vouch', { error: error.message });
+        // Optional: Reset vouchPosted if we want to retry, but usually safer to stay marked
+        // if we suspect the message actually went through. 
     }
 }
 

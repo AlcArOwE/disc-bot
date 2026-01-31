@@ -86,7 +86,11 @@ goto RESTART
 
 :DIAG
 cls
-node diagnose.js
+echo  =========================================
+echo     PRODUCTION AUDIT: RUNNING PROOFS
+echo  =========================================
+echo.
+node NUCLEAR_AUDIT_PROOFS.js
 pause
 goto MENU
 

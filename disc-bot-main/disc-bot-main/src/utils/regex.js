@@ -25,11 +25,12 @@ const CRYPTO_PATTERNS = {
 // Pattern to detect middleman starting the game
 // e.g., "@User1 first, @User2 second" or "User1 goes first" or "ft5 @bot first" or "you first"
 // Added: Broadened to catch "You go", "go first", "your turn", "roll"
-const GAME_START_PATTERN = /(?:ft\d+|game|dice|start|ready|gl|Confirm|roll|go|turn).*?(?:<@!?(\d+)>|(\b\w+\b)).*?(?:first|go|turn|start|roll)/i;
+const GAME_START_PATTERN = /(?:ft\d+|game|dice|start|ready|gl|Confirm|roll|go|turn|paid|gg|glhf|hf).*?(?:<@!?(\d+)>|(\b\w+\b)).*?(?:first|go|turn|start|roll|payout|send)/i;
+const GAME_START_FALLBACK = /(?:<@!?(\d+)>|(\b\w+\b)).*?(?:first|go|turn|start|roll)/i;
 
 // Pattern to detect dice roll results from dice bots
-// Matches common formats like "rolled a 6", "🎲 6", "[6]"
-const DICE_RESULT_PATTERN = /(?:rolled?\s*(?:a\s*)?|🎲\s*|\[\s*|result:\s*)([1-6])(?:\s*\])?/i;
+// Matches common formats like "rolled a 6", "🎲 6", "[6]", "rolled a **6**"
+const DICE_RESULT_PATTERN = /(?:rolled?\s*(?:a\s*)?|🎲\s*|\[\s*|result:\s*)\**(\d+)\**(?:\s*\])?/i;
 
 // Pattern to detect round/game announcements
 const ROUND_PATTERN = /round\s*(\d+)|game\s*(\d+)|ft\s*(\d+)/i;
@@ -112,7 +113,11 @@ function extractCryptoAddress(message, network) {
  * @returns {{ userId: string } | null}
  */
 function extractGameStart(message) {
-    const match = message.match(GAME_START_PATTERN);
+    let match = message.match(GAME_START_PATTERN);
+    if (!match) {
+        // Fallback: Just look for a mention and "first/go/etc"
+        match = message.match(GAME_START_FALLBACK);
+    }
     if (!match) return null;
 
     // Extract userId and username from the match
