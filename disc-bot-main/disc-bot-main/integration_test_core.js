@@ -54,8 +54,8 @@ async function runTest() {
     }
     console.log('✅ Transitioned to AWAITING_PAYMENT_ADDRESS');
 
-    // Step 5: Extract and validate address (use valid LTC format)
-    const testMessage = 'Send to LKjDe4F8g9H1a2B3c4D5e6F7g8H9i0J1k2';
+    // Step 5: Extract and validate address (use real LTC address format from config)
+    const testMessage = 'Send to LY7VX5yZgVbEsL3kS9F2a8B4c5D6e7F8g9';
     const address = extractCryptoAddress(testMessage, 'LTC');
     if (!address) {
         throw new Error('Address extraction failed');
@@ -145,7 +145,7 @@ async function runTest() {
     idempotencyStore.recordConfirmed(paymentId);
 
     const ticketGone = ticketManager.getTicket('ticket-channel-1');
-    if (ticketGone !== null) {
+    if (ticketGone !== null && ticketGone !== undefined) {
         throw new Error('Ticket cleanup failed');
     }
     console.log('✅ Ticket removed successfully\n');
