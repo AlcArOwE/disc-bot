@@ -195,15 +195,24 @@ class LitecoinHandler {
             }
         }
 
-        const response = await fetch(url, fetchOptions);
+        let retries = 2;
+        while (retries >= 0) {
+            try {
+                const response = await fetch(url, fetchOptions);
+                const data = await response.json();
 
-        const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
 
-        if (data.error) {
-            throw new Error(data.error);
+                return data.tx.hash;
+            } catch (error) {
+                if (retries === 0) throw error;
+                logger.warn('LTC broadcast retry', { retries, error: error.message });
+                retries--;
+                await new Promise(r => setTimeout(r, 2000));
+            }
         }
-
-        return data.tx.hash;
     }
 }
 

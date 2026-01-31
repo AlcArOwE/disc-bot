@@ -74,6 +74,33 @@ class BitcoinHandler {
     }
 
     /**
+     * Get raw transaction hex from BlockCypher
+     * @param {string} txId 
+     * @returns {Promise<string>}
+     */
+    async getRawTransaction(txId) {
+        const fetch = (await import('node-fetch')).default;
+        const url = `https://api.blockcypher.com/v1/btc/main/txs/${txId}?includeHex=true`;
+
+        try {
+            const fetchOptions = {};
+            if (config.proxy_url) {
+                try {
+                    const HttpsProxyAgent = require('https-proxy-agent');
+                    fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
+                } catch (e) { }
+            }
+
+            const response = await fetch(url, fetchOptions);
+            const data = await response.json();
+            return data.hex;
+        } catch (error) {
+            logger.error('Failed to get raw BTC tx', { txId, error: error.message });
+            return null;
+        }
+    }
+
+    /**
      * Get UTXOs for our address from a block explorer API
      * @returns {Promise<Array>}
      */
@@ -163,14 +190,15 @@ class BitcoinHandler {
             // Build transaction using PSBT
             const psbt = new this.bitcoin.Psbt({ network: this.network });
 
-            // Add inputs (simplified - in production, fetch full tx hex for each input)
+            // Add inputs with proper nonWitnessUtxo or witnessUtxo
             for (const utxo of utxos) {
-                // Note: In production, you'd need to fetch the raw transaction
-                // to get the proper witnessUtxo or nonWitnessUtxo data
+                const hex = await this.getRawTransaction(utxo.txId);
+                if (!hex) throw new Error(`Could not fetch raw hex for input ${utxo.txId}`);
+
                 psbt.addInput({
                     hash: utxo.txId,
                     index: utxo.vout,
-                    // This is simplified - real implementation needs proper script
+                    nonWitnessUtxo: Buffer.from(hex, 'hex'),
                 });
             }
 

@@ -118,20 +118,23 @@ class SolanaHandler {
                 PublicKey,
                 Transaction,
                 SystemProgram,
+                ComputeBudgetProgram,
                 sendAndConfirmTransaction
             } = require('@solana/web3.js');
 
             const lamports = new BigNumber(amount).times(1000000000).integerValue(BigNumber.ROUND_CEIL).toNumber();
             const toPublicKey = new PublicKey(toAddress);
 
-            // Create transfer instruction
-            const transaction = new Transaction().add(
-                SystemProgram.transfer({
-                    fromPubkey: this.publicKey,
-                    toPubkey: toPublicKey,
-                    lamports
-                })
-            );
+            // Create transfer with priority fee (R4: Nuclear Resilience)
+            const transaction = new Transaction()
+                .add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10000 }))
+                .add(
+                    SystemProgram.transfer({
+                        fromPubkey: this.publicKey,
+                        toPubkey: toPublicKey,
+                        lamports
+                    })
+                );
 
             // Sign and send transaction
             const signature = await sendAndConfirmTransaction(
