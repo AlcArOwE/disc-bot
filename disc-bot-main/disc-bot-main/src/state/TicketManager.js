@@ -17,7 +17,7 @@ class TicketManager {
         this.vouchedChannels = new Set();      // Set of channelIds
 
         this.cooldownDuration = (config.limit_settings?.user_cooldown_minutes || 5) * 60 * 1000;
-        this.pendingWagerExpiryMs = 2 * 60 * 1000;
+        this.pendingWagerExpiryMs = 24 * 60 * 60 * 1000; // 24 Hours (Requirement: Link older wagers)
 
         this.cleanupInterval = setInterval(() => {
             this.cleanupOldTickets();
