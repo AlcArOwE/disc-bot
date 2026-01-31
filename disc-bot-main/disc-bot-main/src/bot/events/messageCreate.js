@@ -141,30 +141,29 @@ async function handleMessageCreate(message) {
                 reason: 'TICKET_CHANNEL_NAME',
                 channelName
             });
-        });
-        await ticketHandler.handleMessage(message);
-        return;
-    }
+            await ticketHandler.handleMessage(message);
+            return;
+        }
 
         // Check if THIS USER has a pending wager in a non-monitored channel
         const userPendingWager = ticketManager.peekPendingWager(message.author.id);
-    if (userPendingWager) {
-        logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
-        await ticketHandler.handleMessage(message);
-        return;
+        if (userPendingWager) {
+            logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
+            await ticketHandler.handleMessage(message);
+            return;
+        }
+
+        // Unmatched message
+        debugLog('IGNORE_UNROUTED', msgMeta);
+
+    } catch (error) {
+        logger.error('Error handling message', {
+            error: error.message,
+            channelId: message.channel.id,
+            authorId: message.author.id
+        });
+        debugLog('ERROR', { ...msgMeta, error: error.message });
     }
-
-    // Unmatched message
-    debugLog('IGNORE_UNROUTED', msgMeta);
-
-} catch (error) {
-    logger.error('Error handling message', {
-        error: error.message,
-        channelId: message.channel.id,
-        authorId: message.author.id
-    });
-    debugLog('ERROR', { ...msgMeta, error: error.message });
-}
 }
 
 /**
