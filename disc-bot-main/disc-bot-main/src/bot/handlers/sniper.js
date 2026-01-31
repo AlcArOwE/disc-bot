@@ -6,7 +6,7 @@ const BigNumber = require('bignumber.js');
 const config = require('../../../config.json');
 const { extractBetAmounts } = require('../../utils/regex');
 const { validateBetAmount } = require('../../utils/validator');
-const { humanDelay } = require('../../utils/delay');
+const { snipeDelay } = require('../../utils/delay');
 const { logger } = require('../../utils/logger');
 const { isUserInActiveTicket, ticketManager } = require('../../state/TicketManager');
 const { logSnipe } = require('../../utils/notifier');
@@ -123,8 +123,8 @@ async function handleMessage(message) {
             // Ignore typing errors
         }
 
-        // Human-like delay before responding
-        await humanDelay(response);
+        // Human-like delay before responding (2 seconds - more natural)
+        await snipeDelay();
 
         // Send response via rate-limited queue
         try {

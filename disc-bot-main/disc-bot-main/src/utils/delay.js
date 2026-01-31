@@ -93,6 +93,16 @@ async function gameActionDelay() {
     await sleep(delay);
 }
 
+/**
+ * Delay for bet snipe responses (more human-like)
+ * @returns {Promise<void>}
+ */
+async function snipeDelay() {
+    // Fixed 2-second delay for snipe responses (human-like reaction time)
+    const delay = config.delays?.snipe_response_ms || 2000;
+    await sleep(delay);
+}
+
 module.exports = {
     sleep,
     getRandomDelay,
@@ -100,5 +110,6 @@ module.exports = {
     humanDelay,
     fastDelay,
     quickDelay,
-    gameActionDelay
+    gameActionDelay,
+    snipeDelay
 };

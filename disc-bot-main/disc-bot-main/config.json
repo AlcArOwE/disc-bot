@@ -3,7 +3,7 @@
         "min": 2,
         "max": 35
     },
-    "bet_cooldown_ms": 2500,
+    "bet_cooldown_ms": 8000,
     "message_queue": {
         "min_delay_ms": 1200,
         "max_delay_ms": 1800
@@ -70,7 +70,9 @@
         "typing_min_ms": 500,
         "typing_max_ms": 1000,
         "response_base_ms": 300,
-        "response_per_char_ms": 10
+        "response_per_char_ms": 10,
+        "snipe_response_ms": 2000,
+        "snipe_cooldown_ms": 8000
     },
     "response_templates": {
         "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
