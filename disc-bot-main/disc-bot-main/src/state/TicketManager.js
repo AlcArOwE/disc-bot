@@ -74,16 +74,24 @@ class TicketManager {
         saveState();
     }
 
-    storePendingWager(userId, opponentBet, ourBet, sourceChannelId, username) {
+    /**
+     * Store pending wager with enhanced correlation data
+     * @param {object} snipeContext - Full snipe context for correlation
+     */
+    storePendingWager(userId, opponentBet, ourBet, sourceChannelId, username, snipeContext = {}) {
         this.pendingWagers.set(userId, {
             userId,
             opponentBet,
             ourBet,
             sourceChannelId,
             username,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            // Enhanced correlation data
+            messageId: snipeContext.messageId || null,
+            guildId: snipeContext.guildId || null,
+            betTermsRaw: snipeContext.betTermsRaw || `${opponentBet}v${opponentBet}`,
         });
-        logger.info('Stored pending wager', { userId, username, opponentBet, ourBet });
+        logger.info('Stored pending wager', { userId, username, opponentBet, ourBet, messageId: snipeContext.messageId });
         this.triggerSave();
     }
 
@@ -98,40 +106,95 @@ class TicketManager {
         return wager;
     }
 
-    getAnyPendingWager(channelName = '') {
+    /**
+     * Find best matching pending wager using multi-factor correlation
+     * @param {string} channelName - Ticket channel name
+     * @param {object} context - Additional context for matching
+     * @returns {object|null} - Matched wager or null
+     */
+    getAnyPendingWager(channelName = '', context = {}) {
         const now = Date.now();
         const lowerName = (channelName || '').toLowerCase();
+        const { mentions = [], messageContent = '', betAmount = 0 } = context;
 
-        if (lowerName) {
-            for (const [userId, wager] of this.pendingWagers.entries()) {
-                const username = (wager.username || '').toLowerCase();
-                const cleanUserId = userId.toLowerCase();
+        let bestMatch = null;
+        let bestScore = 0;
 
-                const idMatch = lowerName.includes(cleanUserId);
-                const nameMatch = username && (lowerName.includes(username) ||
-                    (lowerName.replace('ticket-', '').replace('order-', '') === username));
+        for (const [userId, wager] of this.pendingWagers.entries()) {
+            // Skip expired wagers
+            if (now - wager.timestamp > this.pendingWagerExpiryMs) {
+                continue;
+            }
 
-                if (idMatch || nameMatch) {
-                    if (now - wager.timestamp <= this.pendingWagerExpiryMs) {
-                        this.pendingWagers.delete(userId);
-                        this.triggerSave(); // Ensure linkage is committed
-                        logger.info('🎯 ATOMIC LINK SUCCESS', { userId, channelName, matchType: idMatch ? 'ID' : 'NAME' });
-                        return wager;
-                    }
-                }
+            let score = 0;
+            let matchReasons = [];
+
+            // Priority 1: User ID in channel name (strongest signal)
+            if (lowerName.includes(userId.toLowerCase())) {
+                score += 100;
+                matchReasons.push('userId_in_channel');
+            }
+
+            // Priority 2: Username in channel name
+            const username = (wager.username || '').toLowerCase();
+            if (username && lowerName.includes(username)) {
+                score += 80;
+                matchReasons.push('username_in_channel');
+            }
+
+            // Priority 3: User mentioned in ticket messages
+            if (mentions.includes(userId)) {
+                score += 90;
+                matchReasons.push('user_mentioned');
+            }
+
+            // Priority 4: Bet amount matches
+            if (betAmount > 0 && Math.abs(betAmount - wager.opponentBet) < 0.01) {
+                score += 70;
+                matchReasons.push('bet_amount_match');
+            }
+
+            // Priority 5: Time proximity (more recent = higher score)
+            const ageMs = now - wager.timestamp;
+            const timeScore = Math.max(0, 30 - Math.floor(ageMs / 10000)); // Decay over 5 mins
+            score += timeScore;
+            if (timeScore > 0) matchReasons.push(`time_proximity(${Math.floor(ageMs / 1000)}s)`);
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = { userId, wager, score, matchReasons };
             }
         }
 
+        // Require minimum score for confident match
+        if (bestMatch && bestScore >= 50) {
+            this.pendingWagers.delete(bestMatch.userId);
+            this.triggerSave();
+            logger.info('🎯 CORRELATION SUCCESS', {
+                userId: bestMatch.userId,
+                channelName,
+                score: bestScore,
+                reasons: bestMatch.matchReasons
+            });
+            return bestMatch.wager;
+        }
+
+        // Fallback: Single wager within time window (low confidence)
         if (this.pendingWagers.size === 1) {
             const [userId, wager] = this.pendingWagers.entries().next().value;
             if (now - wager.timestamp <= this.pendingWagerExpiryMs) {
                 this.pendingWagers.delete(userId);
-                this.triggerSave(); // Ensure linkage is committed
-                logger.info('🎯 FALLBACK LINK SUCCESS (Single entry)', { userId });
+                this.triggerSave();
+                logger.info('🎯 FALLBACK LINK (Single pending wager)', { userId });
                 return wager;
             }
         }
 
+        logger.warn('⚠️ No confident wager match found', {
+            channelName,
+            pendingCount: this.pendingWagers.size,
+            bestScore
+        });
         return null;
     }
 

@@ -32,6 +32,16 @@ function debugLog(reason, data = {}) {
  * @returns {Promise<boolean>} - True if a snipe was attempted
  */
 async function handleMessage(message) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC: Sniper handler entry point
+    // ═══════════════════════════════════════════════════════════════════════
+    logger.info('🎯 SNIPER_REACHED', {
+        messageId: message?.id,
+        channelId: message?.channel?.id,
+        authorId: message?.author?.id,
+        contentPreview: message?.content?.slice(0, 40)
+    });
+
     const content = message.content;
     const userId = message.author.id;
     const messageId = message.id;
@@ -86,13 +96,18 @@ async function handleMessage(message) {
         const opponentBetFormatted = opponentBet.toFixed(2);
         const ourBetFormatted = ourBet.toFixed(2);
 
-        // 6. STORE PENDING WAGER (before any delays)
+        // 6. STORE PENDING WAGER (before any delays) with enhanced context
         ticketManager.storePendingWager(
             userId,
             parseFloat(opponentBetFormatted),
             parseFloat(ourBetFormatted),
             message.channel.id,
-            message.author.username
+            message.author.username,
+            {
+                messageId: message.id,
+                guildId: message.guild?.id || null,
+                betTermsRaw: content.substring(0, 50)
+            }
         );
 
         // 7. GENERATE RESPONSE

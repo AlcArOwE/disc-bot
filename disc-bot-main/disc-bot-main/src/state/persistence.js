@@ -27,7 +27,27 @@ function saveState() {
         const tmp = STATE_FILE + '.tmp';
         // USE SYNCHRONOUS WRITE FOR ATOMICITY (Requirement F)
         fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-        fs.renameSync(tmp, STATE_FILE);
+
+        // Handle Windows file locking issues with a simple retry
+        let renamed = false;
+        for (let i = 0; i < 3; i++) {
+            try {
+                if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
+                fs.renameSync(tmp, STATE_FILE);
+                renamed = true;
+                break;
+            } catch (err) {
+                // Wait 100ms before retry
+                const start = Date.now();
+                while (Date.now() - start < 100) { }
+            }
+        }
+
+        if (!renamed) {
+            // Fallback: direct write if rename fails
+            fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+        }
+
 
         logger.debug('💾 State persisted atomically', {
             tickets: managerState.tickets.length,

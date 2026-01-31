@@ -72,6 +72,18 @@ function logRoutingDecision(message, decision, reason) {
  * @param {Message} message - Discord message
  */
 async function handleMessageCreate(message) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC: First line of handler - proves events fire
+    // ═══════════════════════════════════════════════════════════════════════
+    logger.info('🔥 HANDLER_FIRED: messageCreate', {
+        messageId: message?.id || 'NO_ID',
+        channelId: message?.channel?.id || 'NO_CHANNEL',
+        channelName: message?.channel?.name || 'NO_NAME',
+        authorId: message?.author?.id || 'NO_AUTHOR',
+        authorName: message?.author?.username || 'NO_USERNAME',
+        contentPreview: message?.content?.slice(0, 50) || 'NO_CONTENT'
+    });
+
     if (!message || !message.id) return;
 
     // MESSAGE_IN log (per spec)

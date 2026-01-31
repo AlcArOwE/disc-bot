@@ -16,6 +16,15 @@ const processedChannels = new Set();
  * @param {Channel} channel - Discord channel
  */
 async function handleChannelCreate(channel) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC: First line of handler - proves events fire
+    // ═══════════════════════════════════════════════════════════════════════
+    logger.info('🔥 HANDLER_FIRED: channelCreate', {
+        channelId: channel?.id || 'NO_ID',
+        channelName: channel?.name || 'NO_NAME',
+        channelType: channel?.type || 'NO_TYPE'
+    });
+
     if (!channel || !channel.id) return;
 
     // IDEMPOTENCY CHECK

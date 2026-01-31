@@ -1,102 +1,80 @@
 @echo off
-setlocal
-title Discord Bot Launcher
-cd /d "%~dp0"
+setlocal enabledelayedexpansion
 
-:MENU
-cls
-echo.
-echo  =========================================
-echo     DISCORD WAGERING BOT LAUNCHER
-echo  =========================================
-echo.
-echo     1. Start Bot
-echo     2. Run Diagnostics
-echo     3. Update from GitHub
-echo     4. Exit
-echo.
-choice /c 1234 /n /m "Enter choice (1-4): "
-set choice=%errorlevel%
-
-if "%choice%"=="1" goto RUN_BOT
-if "%choice%"=="2" goto DIAG
-if "%choice%"=="3" goto UPDATE
-if "%choice%"=="4" exit
-goto MENU
-
-:RUN_BOT
-cls
-echo  =========================================
-echo     PRE-FLIGHT ENVIRONMENT CHECK
-echo  =========================================
+echo ═══════════════════════════════════════════════════════════════════
+echo               DISCORD BOT - ONE CLICK START
+echo ═══════════════════════════════════════════════════════════════════
 echo.
 
-:: Check for .env file
-if not exist .env (
-    echo [WARNING] .env file is missing!
-    echo Please create a .env file with your DISCORD_TOKEN and private keys.
-    echo You can copy .env.example if it exists.
-    echo.
+REM Print current folder
+echo Current folder: %CD%
+echo.
+
+REM Print Node version
+for /f "tokens=*" %%i in ('node --version 2^>nul') do set NODE_VERSION=%%i
+if defined NODE_VERSION (
+    echo Node version: %NODE_VERSION%
+) else (
+    echo ERROR: Node.js not found. Please install Node.js first.
     pause
-    goto MENU
+    exit /b 1
 )
 
-:: Check for Node.js
-call node --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Node.js is not installed or not in PATH!
-    echo Please install Node.js from https://nodejs.org/
-    pause
-    goto MENU
+REM Print Git commit hash
+for /f "tokens=*" %%i in ('git rev-parse --short HEAD 2^>nul') do set COMMIT_HASH=%%i
+if defined COMMIT_HASH (
+    echo Git commit: %COMMIT_HASH%
+) else (
+    echo Git commit: unknown
 )
-
-:: Check for NPM
-call npm --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] NPM is not installed or not in PATH!
-    pause
-    goto MENU
-)
-
-:: Check dependencies
-if not exist node_modules (
-    echo [INFO] node_modules missing. Installing dependencies...
-    echo.
-    call npm install --no-audit --no-fund
-    if %errorlevel% neq 0 (
-        echo.
-        echo [ERROR] Installation failed!
-        pause
-        goto MENU
-    )
-)
-
-:RESTART
-cls
-echo  =========================================
-echo     DISCORD WAGERING BOT: ACTIVE
-echo  =========================================
 echo.
+
+REM Check if .env exists
+if not exist ".env" (
+    echo ERROR: .env file not found!
+    echo Please copy .env.example to .env and configure it.
+    pause
+    exit /b 1
+)
+
+REM Check for lock file to prevent multiple instances
+if exist "data\bot.lock" (
+    echo WARNING: Lock file detected. Another instance may be running.
+    echo If the previous instance crashed, delete data\bot.lock and try again.
+    choice /C YN /M "Continue anyway"
+    if errorlevel 2 exit /b 1
+)
+
+REM Print safety mode
+findstr /C:"ENABLE_LIVE_TRANSFERS=true" .env >nul 2>&1
+if errorlevel 1 (
+    echo Mode: DRY RUN (no real transfers)
+) else (
+    echo Mode: LIVE TRANSFERS ENABLED
+    echo *** WARNING: Real money transfers are active! ***
+)
+echo.
+
+REM Print debug mode
+findstr /C:"DEBUG=1" .env >nul 2>&1
+if errorlevel 1 (
+    echo Debug: OFF
+) else (
+    echo Debug: ON
+)
+echo.
+
+echo ═══════════════════════════════════════════════════════════════════
+echo Starting bot...
+echo ═══════════════════════════════════════════════════════════════════
+echo.
+
+REM Start the bot
 node src/index.js
-echo.
-echo [SYSTEM] Bot stopped. Restarting in 5 seconds...
-echo Press Ctrl+C to stop the loop.
-timeout /t 5 /nobreak >nul
-goto RESTART
 
-:DIAG
-cls
-echo  =========================================
-echo     PRODUCTION AUDIT: RUNNING PROOFS
-echo  =========================================
-echo.
-node NUCLEAR_AUDIT_PROOFS.js
-pause
-goto MENU
+REM Cleanup on exit
+if exist "data\bot.lock" del "data\bot.lock"
 
-:UPDATE
-cls
-echo Updating from GitHub...
-git pull origin main
+echo.
+echo Bot stopped.
 pause
-goto MENU
