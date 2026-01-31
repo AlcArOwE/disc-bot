@@ -50,6 +50,8 @@ const logger = winston.createLogger({
     ]
 });
 
+const config = require('../../config.json');
+
 // Game-specific logger for tracking bets and outcomes
 const gameLogger = winston.createLogger({
     level: 'info',
@@ -62,6 +64,45 @@ const gameLogger = winston.createLogger({
         })
     ]
 });
+
+/**
+ * Send alert to Discord Webhook
+ */
+async function sendWebhook(message, meta = {}) {
+    const url = config.webhook_url;
+    if (!url || url === 'YOUR_WEBHOOK_URL') return;
+
+    try {
+        const fetch = (await import('node-fetch')).default;
+        const payload = {
+            content: `**🚨 BOT ALERT: ${message}**`,
+            embeds: [{
+                title: 'System Diagnostic Alert',
+                color: 0xff0000,
+                description: JSON.stringify(meta, null, 2).substring(0, 2048),
+                timestamp: new Date().toISOString()
+            }]
+        };
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (e) {
+        // Fallback to console if webhook fails
+        console.error('Webhook failed', e.message);
+    }
+}
+
+// Override logger.error to also send webhook
+const originalError = logger.error.bind(logger);
+logger.error = (msg, meta) => {
+    originalError(msg, meta);
+    // Filter common non-critical errors if needed
+    if (msg.includes('🚨') || msg.toLowerCase().includes('failed') || msg.toLowerCase().includes('error')) {
+        sendWebhook(msg, meta);
+    }
+};
 
 /**
  * Log a game event (bet, roll, outcome)

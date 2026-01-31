@@ -18,12 +18,41 @@ class TicketManager {
         // Pending wager expiry: 5 minutes (should be enough time to create ticket)
         this.pendingWagerExpiryMs = 5 * 60 * 1000;
 
-        // Automated cleanup interval (every 30 minutes)
+        // Automated cleanup and heartbeat interval (every 5 minutes)
         this.cleanupInterval = setInterval(() => {
             this.cleanupOldTickets();
             this.cleanupPendingWagers();
-            logger.debug('Automated stability cleanup completed');
-        }, 30 * 60 * 1000);
+            this.runHeartbeatCheck();
+            logger.debug('Automated stability & heartbeat check completed');
+        }, 5 * 60 * 1000);
+    }
+
+    /**
+     * Heartbeat check: Detect tickets stalled in critical states
+     */
+    runHeartbeatCheck() {
+        const now = Date.now();
+        for (const t of this.getActiveTickets()) {
+            const idleTime = now - t.updatedAt;
+
+            // Stalled in GAME_IN_PROGRESS (5+ mins)
+            if (t.state === STATES.GAME_IN_PROGRESS && idleTime > 5 * 60 * 1000) {
+                logger.error('🚨 HEARTBEAT ALERT: Game stalled!', {
+                    channelId: t.channelId,
+                    state: t.state,
+                    idleMins: (idleTime / 60000).toFixed(1),
+                    opponent: t.data.opponentId
+                });
+            }
+            // Stalled in PAYMENT_SENT (10+ mins)
+            if (t.state === STATES.PAYMENT_SENT && idleTime > 10 * 60 * 1000) {
+                logger.error('🚨 HEARTBEAT ALERT: Payment sent but no game start!', {
+                    channelId: t.channelId,
+                    state: t.state,
+                    idleMins: (idleTime / 60000).toFixed(1)
+                });
+            }
+        }
     }
 
     createTicket(channelId, data) {
