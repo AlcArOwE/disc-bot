@@ -166,6 +166,14 @@ class TicketManager {
         logger.info('Stored pending wager', { userId, username, opponentBet, ourBet });
     }
 
+    // PEAK (Non-destructive) retrieve for routing checks
+    peekPendingWager(userId) {
+        const wager = this.pendingWagers.get(userId);
+        if (!wager) return null;
+        if (Date.now() - wager.timestamp > this.pendingWagerExpiryMs) return null;
+        return wager;
+    }
+
     // Retrieve pending wager for a user (called when ticket is created)
     // Returns the wager data and removes it from pending
     getPendingWager(userId) {

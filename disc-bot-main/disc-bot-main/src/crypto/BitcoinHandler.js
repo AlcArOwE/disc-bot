@@ -145,7 +145,7 @@ class BitcoinHandler {
         }
 
         try {
-            const satoshis = new BigNumber(amount).times(100000000).integerValue(BigNumber.ROUND_FLOOR).toNumber();
+            const satoshis = new BigNumber(amount).times(100000000).integerValue(BigNumber.ROUND_CEIL).toNumber();
             const utxos = await this.getUTXOs();
 
             if (utxos.length === 0) {

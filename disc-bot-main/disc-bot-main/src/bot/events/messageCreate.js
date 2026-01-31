@@ -144,7 +144,7 @@ async function handleMessageCreate(message) {
         }
 
         // Check if THIS USER has a pending wager in a non-monitored channel
-        const userPendingWager = ticketManager.getPendingWager(message.author.id);
+        const userPendingWager = ticketManager.peekPendingWager(message.author.id);
         if (userPendingWager) {
             logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
             await ticketHandler.handleMessage(message);

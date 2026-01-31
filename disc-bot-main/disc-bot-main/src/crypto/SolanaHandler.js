@@ -121,7 +121,7 @@ class SolanaHandler {
                 sendAndConfirmTransaction
             } = require('@solana/web3.js');
 
-            const lamports = new BigNumber(amount).times(1000000000).integerValue(BigNumber.ROUND_FLOOR).toNumber();
+            const lamports = new BigNumber(amount).times(1000000000).integerValue(BigNumber.ROUND_CEIL).toNumber();
             const toPublicKey = new PublicKey(toAddress);
 
             // Create transfer instruction

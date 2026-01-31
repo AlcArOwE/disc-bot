@@ -148,7 +148,7 @@ class PriceOracle {
         // Add 1% slippage buffer for safety when sending (though for payout it's better to be exact)
         // Actually, we should be exact or slightly over to ensure recipient is happy
         const cryptoAmount = usdAmount / price;
-        return parseFloat(cryptoAmount.toFixed(8));
+        return cryptoAmount; // Return raw float, handlers will use BigNumber.ROUND_CEIL
     }
 }
 

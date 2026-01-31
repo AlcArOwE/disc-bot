@@ -155,15 +155,16 @@ async function handlePotentialNewTicket(message) {
     // Check if message is from a middleman - if so, we definitely need to track this
     const isMM = isMiddleman(message.author.id);
 
-    if (isMM) {
-        logger.info('🎯 Middleman detected in ticket channel - auto-creating ticket', {
-            channelId: message.channel.id,
-            middlemanId: message.author.id
-        });
+    // Try to get pending wager for bet amounts (Atomic Link)
+    const pendingWager = ticketManager.getAnyPendingWager(message.channel.name) ||
+        ticketManager.getPendingWager(message.author.id);
 
-        // Try to get pending wager for bet amounts
-        // USE SMART NAME-MATCHING (P1)
-        const pendingWager = ticketManager.getAnyPendingWager(message.channel.name);
+    if (isMM || pendingWager) {
+        logger.info('🎯 Valid ticket activity detected - auto-creating ticket', {
+            channelId: message.channel.id,
+            isMM,
+            hasPendingWager: !!pendingWager
+        });
 
         let ticketData;
         if (pendingWager) {
@@ -175,6 +176,7 @@ async function handlePotentialNewTicket(message) {
                 autoDetected: true
             };
             logger.info('🔗 Linked to pending wager', {
+                userId: pendingWager.userId,
                 opponentBet: pendingWager.opponentBet,
                 ourBet: pendingWager.ourBet
             });
@@ -191,58 +193,28 @@ async function handlePotentialNewTicket(message) {
         // Create the ticket
         const ticket = ticketManager.createTicket(message.channel.id, ticketData);
 
-        // Since we already detected a middleman, transition directly to AWAITING_PAYMENT_ADDRESS
-        ticket.transition(STATES.AWAITING_MIDDLEMAN);
-        ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: message.author.id });
-        saveState();
+        if (isMM) {
+            // Already detected a middleman, transition directly
+            ticket.transition(STATES.AWAITING_MIDDLEMAN);
+            ticket.transition(STATES.AWAITING_PAYMENT_ADDRESS, { middlemanId: message.author.id });
+            saveState();
 
-        // SPEED OPTIMIZATION: Warm up the price oracle cache early
-        priceOracle.preFetch(config.crypto_network);
-
-        logger.info('✅ Ticket auto-created and moved to AWAITING_PAYMENT_ADDRESS', {
-            channelId: message.channel.id,
-            middlemanId: message.author.id,
-            state: ticket.getState()
-        });
-
-        // Now try to extract address from this very message
-        const network = config.crypto_network;
-        const address = extractCryptoAddress(message.content, network);
-        if (address) {
-            logger.info('📬 Address found in MM message', { address });
-            // Process it as if we were in AWAITING_PAYMENT_ADDRESS state
-            return await handleAwaitingPaymentAddress(message, ticket);
+            // Extract address from initial MM message
+            const address = extractCryptoAddress(message.content, config.crypto_network);
+            if (address) {
+                return await handleAwaitingPaymentAddress(message, ticket);
+            }
+        } else {
+            // User triggered creation, wait for MM
+            ticket.transition(STATES.AWAITING_MIDDLEMAN);
+            saveState();
         }
 
+        priceOracle.preFetch(config.crypto_network);
         return true;
     }
 
-    // Not a middleman - might be opponent or someone else
-    // Create a basic ticket and wait for middleman
-    logger.debug('Creating basic ticket for non-MM message', { channelId: message.channel.id });
-
-    // USE SMART NAME-MATCHING (P1)
-    const pendingWager = ticketManager.getAnyPendingWager(message.channel.name);
-    const ticketData = pendingWager ? {
-        opponentId: pendingWager.userId,
-        opponentBet: pendingWager.opponentBet,
-        ourBet: pendingWager.ourBet,
-        autoDetected: true
-    } : {
-        opponentId: message.author.id,  // Assume sender is opponent
-        opponentBet: 0,
-        ourBet: 0,
-        autoDetected: true
-    };
-
-    const ticket = ticketManager.createTicket(message.channel.id, ticketData);
-    ticket.transition(STATES.AWAITING_MIDDLEMAN);
-    saveState();
-
-    // SPEED OPTIMIZATION: Warm up the price oracle cache early (R4)
-    priceOracle.preFetch(config.crypto_network);
-
-    return true;
+    return false;
 }
 
 /**
