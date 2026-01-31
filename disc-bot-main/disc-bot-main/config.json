@@ -12,6 +12,7 @@
         "address_allowlist": [],
         "max_payment_per_tx": 50,
         "max_daily_usd": 500,
+        "global_max_snipe_usd": 50,
         "require_crypto_amounts": true,
         "price_safety": {
             "max_deviation_percentage": 25,

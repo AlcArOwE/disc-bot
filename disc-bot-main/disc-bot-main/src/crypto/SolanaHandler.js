@@ -113,42 +113,57 @@ class SolanaHandler {
             return { success: false, error: 'Invalid recipient address' };
         }
 
-        try {
-            const {
-                PublicKey,
-                Transaction,
-                SystemProgram,
-                ComputeBudgetProgram,
-                sendAndConfirmTransaction
-            } = require('@solana/web3.js');
+        const maxRetries = 3;
+        let lastError;
 
-            const lamports = new BigNumber(amount).times(1000000000).integerValue(BigNumber.ROUND_CEIL).toNumber();
-            const toPublicKey = new PublicKey(toAddress);
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    const delay = 2000 * attempt;
+                    logger.info(`Retrying SOL payment (attempt ${attempt}/${maxRetries}) in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
 
-            // Create transfer with priority fee (R4: Nuclear Resilience)
-            const transaction = new Transaction()
-                .add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10000 }))
-                .add(
-                    SystemProgram.transfer({
-                        fromPubkey: this.publicKey,
-                        toPubkey: toPublicKey,
-                        lamports
-                    })
+                const {
+                    PublicKey,
+                    Transaction,
+                    SystemProgram,
+                    ComputeBudgetProgram,
+                    sendAndConfirmTransaction
+                } = require('@solana/web3.js');
+
+                const lamports = new BigNumber(amount).times(1000000000).integerValue(BigNumber.ROUND_CEIL).toNumber();
+                const toPublicKey = new PublicKey(toAddress);
+
+                // Create transfer with priority fee
+                const transaction = new Transaction()
+                    .add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 15000 })) // Increased priority
+                    .add(
+                        SystemProgram.transfer({
+                            fromPubkey: this.publicKey,
+                            toPubkey: toPublicKey,
+                            lamports
+                        })
+                    );
+
+                const signature = await sendAndConfirmTransaction(
+                    this.connection,
+                    transaction,
+                    [this.keypair],
+                    { commitment: 'confirmed' }
                 );
 
-            // Sign and send transaction
-            const signature = await sendAndConfirmTransaction(
-                this.connection,
-                transaction,
-                [this.keypair]
-            );
-
-            logger.info('SOL payment sent', { txId: signature });
-            return { success: true, txId: signature };
-        } catch (error) {
-            logger.error('SOL payment failed', { error: error.message });
-            return { success: false, error: error.message };
+                logger.info('SOL payment sent', { txId: signature });
+                return { success: true, txId: signature };
+            } catch (error) {
+                lastError = error;
+                logger.warn(`SOL payment attempt ${attempt} failed`, { error: error.message });
+                // If it's a balance error, don't retry
+                if (error.message.includes('0x1')) break;
+            }
         }
+
+        return { success: false, error: `SOL payment failed after ${maxRetries} retries: ${lastError.message}` };
     }
 }
 

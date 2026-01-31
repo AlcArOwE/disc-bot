@@ -240,31 +240,45 @@ class BitcoinHandler {
     async broadcastTransaction(txHex) {
         const fetch = (await import('node-fetch')).default;
         const url = 'https://api.blockcypher.com/v1/btc/main/txs/push';
+        const maxRetries = 3;
+        let lastError;
 
-        const fetchOptions = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tx: txHex })
-        };
-
-        if (config.proxy_url) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                const HttpsProxyAgent = require('https-proxy-agent');
-                fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
-            } catch (e) {
-                logger.debug('Proxy agent not available for BTC broadcast', { error: e.message });
+                if (attempt > 0) {
+                    const delay = Math.pow(2, attempt) * 1000;
+                    logger.info(`Retrying BTC broadcast (attempt ${attempt}/${maxRetries}) in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+
+                const fetchOptions = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tx: txHex })
+                };
+
+                if (config.proxy_url) {
+                    try {
+                        const HttpsProxyAgent = require('https-proxy-agent');
+                        fetchOptions.agent = new HttpsProxyAgent(config.proxy_url);
+                    } catch (e) { }
+                }
+
+                const response = await fetch(url, fetchOptions);
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                return data.tx.hash;
+            } catch (error) {
+                lastError = error;
+                logger.warn(`BTC broadcast attempt ${attempt} failed`, { error: error.message });
             }
         }
 
-        const response = await fetch(url, fetchOptions);
-
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
-        return data.tx.hash;
+        throw new Error(`BTC broadcast failed after ${maxRetries} retries: ${lastError.message}`);
     }
 }
 
