@@ -18,8 +18,8 @@
  * ╚═══════════════════════════════════════════════════════════════════╝
  */
 
-const { logger } = require('./src/utils/logger');
-const config = require('./config.json');
+const { logger } = require('../src/utils/logger');
+const config = require('../config.json');
 
 console.log('\n╔═══════════════════════════════════════════════════════════════════╗');
 console.log('║                  🚨 NUCLEAR FINAL PRODUCTION TEST 🚨              ║');
@@ -52,15 +52,15 @@ async function testInfrastructure() {
     console.log('## TEST 1.1: Core Modules Load\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
-        const { messageQueue } = require('./src/utils/MessageQueue');
-        const { priceOracle } = require('./src/crypto/PriceOracle');
-        const DiceEngine = require('./src/game/DiceEngine');
-        const ScoreTracker = require('./src/game/ScoreTracker');
-        const { sendPayment } = require('./src/crypto');
-        const { extractBetAmounts, extractCryptoAddress } = require('./src/utils/regex');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
+        const { messageQueue } = require('../src/utils/MessageQueue');
+        const { priceOracle } = require('../src/crypto/PriceOracle');
+        const DiceEngine = require('../src/game/DiceEngine');
+        const ScoreTracker = require('../src/game/ScoreTracker');
+        const { sendPayment } = require('../src/crypto');
+        const { extractBetAmounts, extractCryptoAddress } = require('../src/utils/regex');
 
         console.log('   ✅ TicketManager loaded');
         console.log('   ✅ StateMachine loaded');
@@ -95,7 +95,7 @@ async function testCryptoSystem() {
     console.log('## TEST 2.1: Live Price Fetching\n');
 
     try {
-        const { priceOracle } = require('./src/crypto/PriceOracle');
+        const { priceOracle } = require('../src/crypto/PriceOracle');
 
         const ltcPrice = await priceOracle.getPrice('LTC');
         const solPrice = await priceOracle.getPrice('SOL');
@@ -120,7 +120,7 @@ async function testCryptoSystem() {
     console.log('## TEST 2.2: USD to Crypto Conversion\n');
 
     try {
-        const { priceOracle } = require('./src/crypto/PriceOracle');
+        const { priceOracle } = require('../src/crypto/PriceOracle');
 
         const cryptoAmount = await priceOracle.convertUsdToCrypto(50, config.crypto_network);
 
@@ -140,7 +140,7 @@ async function testCryptoSystem() {
     console.log('## TEST 2.3: Payment Sending (DRY-RUN)\n');
 
     try {
-        const { sendPayment } = require('./src/crypto');
+        const { sendPayment } = require('../src/crypto');
         const testAddr = config.payout_addresses[config.crypto_network];
 
         const result = await sendPayment(testAddr, 10, config.crypto_network, 'nuclear-test-1');
@@ -161,7 +161,7 @@ async function testCryptoSystem() {
     console.log('## TEST 2.4: Idempotency Protection\n');
 
     try {
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
 
         const paymentId = `test-${Date.now()}`;
         const addr = config.payout_addresses[config.crypto_network];
@@ -206,7 +206,7 @@ async function testGameLogic() {
     console.log('## TEST 3.1: Dice Rolling (Crypto Random)\n');
 
     try {
-        const DiceEngine = require('./src/game/DiceEngine');
+        const DiceEngine = require('../src/game/DiceEngine');
 
         const rolls = [];
         for (let i = 0; i < 100; i++) {
@@ -233,8 +233,8 @@ async function testGameLogic() {
     console.log('## TEST 3.2: Complete FT5 Game\n');
 
     try {
-        const DiceEngine = require('./src/game/DiceEngine');
-        const ScoreTracker = require('./src/game/ScoreTracker');
+        const DiceEngine = require('../src/game/DiceEngine');
+        const ScoreTracker = require('../src/game/ScoreTracker');
 
         const tracker = new ScoreTracker('nuclear-game-test', 5);
 
@@ -280,8 +280,8 @@ async function testStatePersistence() {
     console.log('## TEST 4.1: Ticket Lifecycle\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
 
         const ticketId = `nuclear-ticket-${Date.now()}`;
 
@@ -321,8 +321,8 @@ async function testStatePersistence() {
     console.log('## TEST 4.2: State Persistence\n');
 
     try {
-        const { saveState, loadState } = require('./src/state/persistence');
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { saveState, loadState } = require('../src/state/persistence');
+        const { ticketManager } = require('../src/state/TicketManager');
 
         // Create test data
         const ticketId = `persist-test-${Date.now()}`;
@@ -371,12 +371,12 @@ async function testCompleteSimulation() {
     console.log('## TEST 5.1: Three Concurrent Games (Complete Lifecycle)\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
-        const DiceEngine = require('./src/game/DiceEngine');
-        const ScoreTracker = require('./src/game/ScoreTracker');
-        const { priceOracle } = require('./src/crypto/PriceOracle');
-        const { sendPayment } = require('./src/crypto');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
+        const DiceEngine = require('../src/game/DiceEngine');
+        const ScoreTracker = require('../src/game/ScoreTracker');
+        const { priceOracle } = require('../src/crypto/PriceOracle');
+        const { sendPayment } = require('../src/crypto');
 
         const games = [
             { id: `game1-${Date.now()}`, user: 'player1', bet: 15 },
