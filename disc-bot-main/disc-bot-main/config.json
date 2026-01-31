@@ -1,7 +1,7 @@
 {
     "betting_limits": {
         "min": 2,
-        "max": 35
+        "max": 10
     },
     "bet_cooldown_ms": 10000,
     "snipe_messages": [
@@ -27,9 +27,9 @@
     },
     "payment_safety": {
         "address_allowlist": [],
-        "max_payment_per_tx": 50,
-        "max_daily_usd": 500,
-        "global_max_snipe_usd": 35,
+        "max_payment_per_tx": 20,
+        "max_daily_usd": 200,
+        "global_max_snipe_usd": 10,
         "require_crypto_amounts": true,
         "require_ticket_channel_for_payment": true,
         "ticket_channel_patterns": [
