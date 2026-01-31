@@ -145,9 +145,10 @@ async function handleMessageCreate(message) {
             return;
         }
 
-        // Check if THIS USER has a pending wager in a non-monitored channel
+        // Check if THIS USER has a pending wager
+        // CRITICAL: Only route to ticket handler if NOT in a monitored public channel
         const userPendingWager = ticketManager.peekPendingWager(message.author.id);
-        if (userPendingWager) {
+        if (userPendingWager && !isMonitoredChannel) {
             logger.info('📋 Routing to ticket handler (user has pending wager)', { ...msgMeta });
             await ticketHandler.handleMessage(message);
             return;

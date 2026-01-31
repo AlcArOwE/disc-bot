@@ -14,6 +14,12 @@
         "max_daily_usd": 500,
         "global_max_snipe_usd": 50,
         "require_crypto_amounts": true,
+        "require_ticket_channel_for_payment": true,
+        "ticket_channel_patterns": [
+            "ticket",
+            "order-"
+        ],
+        "public_channel_blocklist": [],
         "price_safety": {
             "max_deviation_percentage": 25,
             "hard_min_price": {

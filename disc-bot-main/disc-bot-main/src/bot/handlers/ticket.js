@@ -44,6 +44,26 @@ ticketManager.onTicketRemoved = (channelId) => {
  */
 async function handleMessage(message) {
     const channelId = message.channel.id;
+    const channelName = message.channel.name?.toLowerCase() || '';
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PRE-FLIGHT VALIDATION: Block ticket operations in wrong channels
+    // ═══════════════════════════════════════════════════════════════════
+    const monitoredChannels = config.channels?.monitored_channels || [];
+    const isMonitoredPublic = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
+    const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
+    const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
+
+    // If this is a monitored public channel AND not a ticket channel, block all ticket actions
+    if (isMonitoredPublic && !isTicketChannel) {
+        logger.warn('🚫 BLOCKED: Ticket handler called in public channel', {
+            channelId,
+            channelName,
+            action: 'TICKET_HANDLER_BLOCKED'
+        });
+        return false;
+    }
+    // ═══════════════════════════════════════════════════════════════════
 
     // CONCURRENCY LOCK (P2)
     if (processingSessions.has(channelId)) {
@@ -284,6 +304,46 @@ const DEBUG = process.env.DEBUG === '1';
  * Handle awaiting payment address state
  */
 async function handleAwaitingPaymentAddress(message, ticket) {
+    const channelId = message.channel.id;
+    const channelName = message.channel.name?.toLowerCase() || '';
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CRITICAL SAFETY CHECK #1: NEVER process payments in public channels
+    // ═══════════════════════════════════════════════════════════════════
+    const monitoredChannels = config.channels?.monitored_channels || [];
+    const isMonitoredPublic = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
+
+    // Check if channel name matches ticket patterns
+    const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
+    const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
+
+    // BLOCK if we're in a monitored public channel
+    if (isMonitoredPublic && !isTicketChannel) {
+        logger.error('🚨 PAYMENT BLOCKED: Attempted payment in PUBLIC channel!', {
+            channelId,
+            channelName,
+            ticketId: ticket.channelId
+        });
+        return false;
+    }
+
+    // BLOCK if channel doesn't match ticket patterns (when required)
+    if (config.payment_safety?.require_ticket_channel_for_payment && !isTicketChannel) {
+        logger.error('🚨 PAYMENT BLOCKED: Channel does not match ticket patterns!', {
+            channelId,
+            channelName,
+            patterns: ticketPatterns
+        });
+        return false;
+    }
+
+    // Check EMERGENCY_STOP environment variable
+    if (process.env.EMERGENCY_STOP === 'true') {
+        logger.error('🚨 EMERGENCY STOP: All payments halted by environment flag');
+        return false;
+    }
+    // ═══════════════════════════════════════════════════════════════════
+
     // DEBUG: Log all messages in this state
     if (DEBUG) {
         logger.debug('[ADDR_STATE] Message received in AWAITING_PAYMENT_ADDRESS', {
