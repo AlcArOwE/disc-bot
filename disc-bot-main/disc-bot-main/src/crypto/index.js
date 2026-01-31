@@ -139,10 +139,17 @@ async function sendPayment(toAddress, amountUsd, network = config.crypto_network
         let cryptoAmount;
         try {
             cryptoAmount = await priceOracle.convertUsdToCrypto(amountUsd, network);
+
+            // NUCLEAR SAFETY: Explicit NULL/NaN/Infinity validation
+            if (cryptoAmount == null || !isFinite(cryptoAmount) || cryptoAmount <= 0) {
+                throw new Error(`Invalid conversion result: ${cryptoAmount}. Price API may have returned corrupted data.`);
+            }
+
             const currentPrice = await priceOracle.getPrice(network);
             logger.info(`✨ Conversion: $${amountUsd} USD = ${cryptoAmount} ${network.toUpperCase()} (Price: $${currentPrice})`);
         } catch (priceError) {
             logger.error('❌ Price conversion failed - aborting payment', { error: priceError.message });
+            idempotencyStore.recordFailed(paymentId, `Price conversion failed: ${priceError.message}`);
             return {
                 success: false,
                 error: `Could not determine ${network} price: ${priceError.message}. Payment aborted for safety.`
