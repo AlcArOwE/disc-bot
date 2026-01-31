@@ -186,15 +186,26 @@ async function handleMessageCreate(message) {
             return;
         }
 
-        // Priority 3: Potential Ticket Trigger
-        if (channelClass.type === ChannelType.TICKET) {
-            const handled = await ticketHandler.handleMessage(message);
-            if (handled) {
-                logRoutingDecision(message, 'TICKET_INIT', 'New ticket channel matched');
-            } else {
-                debugLog('IGNORE_UNHANDLED_TICKET', { messageId, channelId });
-            }
+        // Priority 3: Potential Ticket Trigger or Mention Recovery
+        const handled = await ticketHandler.handleMessage(message);
+        if (handled) {
+            const decision = existingTicket ? 'TICKET_UPDATE' : 'TICKET_INIT';
+            logRoutingDecision(message, decision, 'Ticket handler processed message');
             return;
+        }
+
+        // Priority 4: Mention Recovery (Lazy Discovery)
+        const botId = message.client.user.id;
+        if (message.mentions.has(botId) && !existingTicket) {
+            logger.info('🔍 MENTION_DISCOVERY: Bot mentioned in untracked channel', {
+                channelId,
+                channelName: message.channel.name
+            });
+            const discovered = await ticketHandler.handlePotentialNewTicket(message);
+            if (discovered) {
+                logRoutingDecision(message, 'TICKET_DISCOVERED', 'Bot mention triggered ticket link');
+                return;
+            }
         }
 
         // Default: Unrouted

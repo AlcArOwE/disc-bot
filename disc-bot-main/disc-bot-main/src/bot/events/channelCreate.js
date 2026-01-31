@@ -42,27 +42,28 @@ async function handleChannelCreate(channel) {
         const channelName = channel.name?.toLowerCase() || '';
 
         // Unified ticket patterns
-        const isTicketChannel =
+        const isTicketPattern =
             channelName.startsWith('ticket') ||
             channelName.startsWith('order-') ||
             channelName.includes('-ticket-');
 
-        if (!isTicketChannel) {
+        // SMART MATCHING: Try to get pending wager for EVERY new channel
+        // This allows "any name" tickets to work if they match a recent wager
+        const pendingWager = ticketManager.getAnyPendingWager(channel.name);
+
+        // If it's not a ticket pattern AND no wager matches, ignore it
+        if (!isTicketPattern && !pendingWager) {
             return;
         }
 
         logger.info('🎫 TICKET_DETECTED', {
             channelId: channel.id,
-            channelName: channel.name
+            channelName: channel.name,
+            reason: isTicketPattern ? 'name_match' : 'wager_match'
         });
 
-        // Create a ticket for this channel and put it in AWAITING_MIDDLEMAN state
-        // Try to link with a pending wager from a recent snipe
         const existingTicket = ticketManager.getTicket(channel.id);
         if (!existingTicket) {
-            // Try to get pending wager (SMART MATCHING P1)
-            const pendingWager = ticketManager.getAnyPendingWager(channel.name);
-
             let ticketData;
             if (pendingWager) {
                 // We have bet info from a recent snipe!

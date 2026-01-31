@@ -63,19 +63,13 @@ async function handleMessage(message) {
     const existingTicket = ticketManager.getTicket(channelId);
 
     if (!existingTicket) {
-        // Only apply name-based filtering when NO ticket exists
-        const monitoredChannels = config.channels?.monitored_channels || [];
-        const isMonitoredPublic = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
+        // PERMISSIVE: Allow any channel if a wager matches or it's a ticket pattern
         const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
-        const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
+        const isTicketPattern = ticketPatterns.some(pattern => channelName.includes(pattern));
 
-        // If this is a monitored public channel AND not a ticket channel, block all ticket actions
-        if (isMonitoredPublic && !isTicketChannel) {
-            debugLog('IGNORE_TICKET_ROUTED_TO_PUBLIC', {
-                channelId,
-                channelName
-            });
-            return false;
+        // If it's not a pattern, we still proceed to check for wagers in handlePotentialNewTicket
+        if (!isTicketPattern) {
+            debugLog('CHECKING_ARBITRARY_CHANNEL_FOR_WAGER', { channelId, channelName });
         }
     }
     // ═══════════════════════════════════════════════════════════════════
