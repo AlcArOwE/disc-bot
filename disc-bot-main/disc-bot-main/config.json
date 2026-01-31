@@ -3,7 +3,24 @@
         "min": 2,
         "max": 35
     },
-    "bet_cooldown_ms": 8000,
+    "bet_cooldown_ms": 10000,
+    "snipe_messages": [
+        "i'll take this",
+        "im in",
+        "down for this",
+        "I'm down",
+        "bet",
+        "taking this one",
+        "I got this",
+        "yea im in",
+        "count me in",
+        "lets go",
+        "im game",
+        "sure why not",
+        "I'll take it",
+        "down",
+        "yo I'm in"
+    ],
     "message_queue": {
         "min_delay_ms": 1200,
         "max_delay_ms": 1800

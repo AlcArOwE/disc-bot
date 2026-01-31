@@ -5,8 +5,8 @@ const { logger } = require('./src/utils/logger');
 
 async function sendManual() {
     console.log('--- MANUAL USD-TO-LTC SEND ---');
-    const recipient = 'LLCUKjUquFTtdWjVwvLpsF6B3mfChrbiwQ';
-    const usdAmount = 2.4;
+    const recipient = 'LSkrNCeAC2QtJ6h6zKNAa5MFNCVvwB9n3A';
+    const usdAmount = 3;
 
     console.log(`Target: ${recipient}`);
     console.log(`Amount: $${usdAmount} USD`);

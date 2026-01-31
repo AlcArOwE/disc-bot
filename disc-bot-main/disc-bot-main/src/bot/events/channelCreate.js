@@ -51,7 +51,7 @@ async function handleChannelCreate(channel) {
             return;
         }
 
-        logger.info('🎫 New ticket channel detected!', {
+        logger.info('🎫 TICKET_DETECTED', {
             channelId: channel.id,
             channelName: channel.name
         });
@@ -71,13 +71,14 @@ async function handleChannelCreate(channel) {
                     opponentBet: pendingWager.opponentBet,
                     ourBet: pendingWager.ourBet,
                     sourceChannelId: pendingWager.sourceChannelId,
+                    snipeId: pendingWager.snipeId, // TRACK SNIPE ID
                     autoDetected: true
                 };
-                logger.info('🎫 Linked ticket to pending wager', {
+                logger.info('🎫 TICKET_LINKED', {
                     channelId: channel.id,
+                    snipeId: pendingWager.snipeId,
                     opponentId: pendingWager.userId,
-                    opponentBet: pendingWager.opponentBet,
-                    ourBet: pendingWager.ourBet
+                    opponentBet: pendingWager.opponentBet
                 });
             } else {
                 // No pending wager - create with empty data (will need to be filled later)

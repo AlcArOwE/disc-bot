@@ -36,6 +36,16 @@ async function handleReady(client) {
         });
     }
 
+    // RIGOROUS RECOVERY: Trigger missed vouches
+    const needingVouch = ticketManager.getTicketsNeedingVouch();
+    if (needingVouch.length > 0) {
+        logger.info(`🎯 Recovery: Found ${needingVouch.length} tickets needing vouches. Triggering...`);
+        const { postVouch } = require('../handlers/ticket');
+        for (const ticket of needingVouch) {
+            setTimeout(() => postVouch(client, ticket).catch(e => logger.error('Vouch recovery failed', { error: e.message })), 2000);
+        }
+    }
+
     // Start auto-save
     startAutoSave();
 

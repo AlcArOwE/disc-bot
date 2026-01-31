@@ -139,9 +139,20 @@ async function handleMessageCreate(message) {
         // IGNORE_BOT (except dice bots in active game tickets)
         const existingTicket = ticketManager.getTicket(channelId);
         if (message.author.bot) {
+            // Allow dice bots during games
             if (isDiceBot(message, existingTicket)) {
                 debugLog('PROCESS_DICE_BOT', { messageId, authorId });
-            } else {
+            }
+            // Allow Dyno bot in ticket channels (posts LTC addresses)
+            else if (existingTicket && isTrustedTicketBot(authorId)) {
+                logger.info('🤖 PROCESS_TRUSTED_BOT', {
+                    messageId,
+                    authorId,
+                    authorName: message.author.username,
+                    channelId
+                });
+            }
+            else {
                 debugLog('IGNORE_BOT', { messageId, authorId });
                 return;
             }
@@ -153,7 +164,13 @@ async function handleMessageCreate(message) {
 
         // Priority 1: Existing Ticket
         if (existingTicket) {
-            logRoutingDecision(message, 'TICKET_HANDLER', 'Routing to active session');
+            // CRITICAL: Once a ticket exists for this ID, we ALWAYS route it
+            // even if the channel was renamed (Bug fix for staged tickets)
+            logger.debug('🎯 ROUTING_TO_ACTIVE_TICKET', {
+                channelId,
+                state: existingTicket.getState(),
+                authorName: message.author.username
+            });
             await ticketHandler.handleMessage(message);
             return;
         }
@@ -163,9 +180,9 @@ async function handleMessageCreate(message) {
             const sniped = await sniperHandler.handleMessage(message);
             if (sniped) {
                 logRoutingDecision(message, 'SNIPED', 'New bet detected');
-            } else {
-                debugLog('IGNORE_NO_MATCH', { messageId, channelId });
+                return;
             }
+            debugLog('IGNORE_NO_MATCH', { messageId, channelId });
             return;
         }
 
@@ -202,6 +219,18 @@ function isDiceBot(message, ticket) {
         return DICE_RESULT_PATTERN.test(message.content);
     }
     return false;
+}
+
+/**
+ * Check if the bot is trusted to post in ticket channels (e.g., Dyno posts addresses)
+ */
+function isTrustedTicketBot(authorId) {
+    // Dyno bot IDs
+    const DYNO_BOT_IDS = ['155149108183695360', '161660517914509312'];
+    // Ticket Tool bot
+    const TICKET_TOOL_ID = '557628352828014614';
+
+    return DYNO_BOT_IDS.includes(authorId) || authorId === TICKET_TOOL_ID;
 }
 
 module.exports = handleMessageCreate;

@@ -57,18 +57,26 @@ async function handleMessage(message) {
     // ═══════════════════════════════════════════════════════════════════
     // PRE-FLIGHT VALIDATION: Block ticket operations in wrong channels
     // ═══════════════════════════════════════════════════════════════════
-    const monitoredChannels = config.channels?.monitored_channels || [];
-    const isMonitoredPublic = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
-    const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
-    const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
 
-    // If this is a monitored public channel AND not a ticket channel, block all ticket actions
-    if (isMonitoredPublic && !isTicketChannel) {
-        debugLog('IGNORE_TICKET_ROUTED_TO_PUBLIC', {
-            channelId,
-            channelName
-        });
-        return false;
+    // CRITICAL: Check if a ticket already exists for this channel FIRST
+    // This handles renamed tickets (e.g., "l-3v3" instead of "ticket-195395")
+    const existingTicket = ticketManager.getTicket(channelId);
+
+    if (!existingTicket) {
+        // Only apply name-based filtering when NO ticket exists
+        const monitoredChannels = config.channels?.monitored_channels || [];
+        const isMonitoredPublic = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
+        const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
+        const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
+
+        // If this is a monitored public channel AND not a ticket channel, block all ticket actions
+        if (isMonitoredPublic && !isTicketChannel) {
+            debugLog('IGNORE_TICKET_ROUTED_TO_PUBLIC', {
+                channelId,
+                channelName
+            });
+            return false;
+        }
     }
     // ═══════════════════════════════════════════════════════════════════
 
@@ -139,9 +147,11 @@ async function handleMessage(message) {
                 await handlePaymentSent(message, ticket);
                 break;
             case STATES.AWAITING_GAME_START:
+            case 'READY_TO_ROLL': // Support for intermediate state
                 await handleAwaitingGameStart(message, ticket);
                 break;
             case STATES.GAME_IN_PROGRESS:
+            case 'WAITING_FOR_OUR_TURN':
                 await handleGameInProgress(message, ticket);
                 break;
             default:
@@ -187,13 +197,12 @@ async function handlePotentialNewTicket(message) {
         ticketManager.getPendingWager(message.author.id);
 
     if (isMM || pendingWager) {
-        logger.info('📋 Potential ticket channel detected', {
+        logger.info('🎫 TICKET_DETECTED', {
             channelId: message.channel.id,
             channelName,
             authorId: message.author.id,
             isMM,
-            hasPendingWager: !!pendingWager,
-            mentionsCount: mentions.length
+            hasPendingWager: !!pendingWager
         });
 
         let ticketData;
@@ -203,14 +212,14 @@ async function handlePotentialNewTicket(message) {
                 opponentBet: pendingWager.opponentBet,
                 ourBet: pendingWager.ourBet,
                 sourceChannelId: pendingWager.sourceChannelId,
-                snipeMessageId: pendingWager.messageId || null,
+                snipeId: pendingWager.snipeId, // TRACK SNIPE ID
                 autoDetected: true
             };
-            logger.info('🔗 Linked to pending wager', {
-                userId: pendingWager.userId,
-                opponentBet: pendingWager.opponentBet,
-                ourBet: pendingWager.ourBet,
-                snipeMessageId: pendingWager.messageId
+            logger.info('🎫 TICKET_LINKED', {
+                channelId: message.channel.id,
+                snipeId: pendingWager.snipeId,
+                opponentId: pendingWager.userId,
+                opponentBet: pendingWager.opponentBet
             });
         } else {
             // No wager found - request clarification in ticket
@@ -335,20 +344,12 @@ async function handleAwaitingMiddleman(message, ticket) {
  */
 async function handleAwaitingPaymentAddress(message, ticket) {
     const channelId = message.channel.id;
-    const channelName = message.channel.name?.toLowerCase() || '';
 
-    const ticketPatterns = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
-    const isTicketChannel = ticketPatterns.some(pattern => channelName.includes(pattern));
+    // NOTE: Channel name check removed - we already verified this is a valid ticket
+    // channel in handleMessage(). The ticket exists for this channelId.
 
-    if (!isTicketChannel) {
-        logger.error('🚨 PAYMENT BLOCKED: Channel does not match ticket patterns!', { channelId, channelName });
-        return false;
-    }
-
-    if (message.author.id !== ticket.data.middlemanId) {
-        debugLog('IGNORE_NOT_MM_PAYMENT_ADDR', { authorId: message.author.id });
-        return false;
-    }
+    // NOTE: MM-only sender check removed here. The trusted sender check below
+    // (lines ~400) properly handles Dyno bot, middlemen, and configured trusted senders.
 
     const network = config.crypto_network;
     const address = extractCryptoAddress(message.content, network);
@@ -397,19 +398,31 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     // ═══════════════════════════════════════════════════════════════════
     const trustedSenders = config.payment_safety?.trusted_senders || [];
     const dynoIds = ['155149108183695360', '161660517914509312']; // Dyno bot IDs
+
+    // CRITICAL: We also trust the middleman even if not explicitly in config list
     const isTrustedSender =
         message.author.id === ticket.data.middlemanId ||
         isMiddleman(message.author.id) ||
         dynoIds.includes(message.author.id) ||
-        trustedSenders.includes(message.author.id);
+        trustedSenders.includes(message.author.id) ||
+        message.author.username.toLowerCase().includes('dyno'); // Safety fallback
 
     if (!isTrustedSender) {
         logger.warn('🔒 UNTRUSTED SENDER: Address from non-trusted source', {
             senderId: message.author.id,
+            authorName: message.author.username,
             expectedMM: ticket.data.middlemanId,
             channelId
         });
         return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // RIGOROUS IDEMPOTENCY: Never process same address message twice
+    // ═══════════════════════════════════════════════════════════════════
+    if (ticketManager.isTransactionProcessed(message.id)) {
+        logger.info('🛑 IGNORE_DUPLICATE_ADDRESS', { channelId: ticket.channelId, msgId: message.id });
+        return true;
     }
 
     if (ticket.hasPaymentBeenSent()) {
@@ -427,7 +440,7 @@ async function handleAwaitingPaymentAddress(message, ticket) {
     const maxPerTx = config.payment_safety?.max_payment_per_tx || 50;
 
     // ═══════════════════════════════════════════════════════════════════
-    // SAFETY GATE 3: Per-transaction limit
+    // SAFETY GATE 3: Limits validation
     // ═══════════════════════════════════════════════════════════════════
     if (amountUsd < minAmount) {
         logger.error('🚨 PAYMENT REJECTED: Amount below minimum', { amountUsd, minAmount });
@@ -441,42 +454,38 @@ async function handleAwaitingPaymentAddress(message, ticket) {
         return false;
     }
 
+    // Lock the ticket to prevent concurrent payment attempts
     ticket.updateData({ paymentLocked: true });
     saveState();
-    await fastDelay();
-
-    logger.info('💸 INITIATING AUTO-SEND', {
-        channelId,
-        address,
-        amountUsd,
-        network,
-        senderId: message.author.id
-    });
 
     try {
-        const result = await sendPayment(address, amountUsd, network, ticket.channelId);
-        if (result.success) {
-            ticket.transition(STATES.PAYMENT_SENT, {
-                paymentAddress: address,
-                paymentTxId: result.txId
-            });
-            saveState();
-            const confirmMsg = config.response_templates.payment_sent
-                .replace('{txid}', result.txId)
-                .replace('{amount}', amountUsd.toFixed(2));
-            await messageQueue.send(message.channel, confirmMsg);
-            logPayment(ticket.channelId, amountUsd, result.txId, network);
+        let result;
+        if (process.env.ENABLE_LIVE_TRANSFERS === 'true') {
+            result = await sendCrypto(address, amountUsd, network);
+            logger.info('💰 TX_SENT', { channelId: ticket.channelId, txid: result.txid, address });
+            await messageQueue.send(message.channel, config.response_templates.payment_sent.replace('{amount}', amountUsd).replace('{txid}', result.txid));
+            ticketManager.recordTransaction(message.id, result.txid);
         } else {
-            throw new Error(result.error || 'Unknown payment error');
+            result = { dryRun: true, id: `dry-${Date.now()}` };
+            logger.info('💰 DRY_RUN', { channelId: ticket.channelId, address, amountUsd });
+            await messageQueue.send(message.channel, `[DRY_RUN] Sent $${amountUsd} to \`${address}\`. ID: \`${result.id}\``);
+            ticketManager.recordTransaction(message.id, result.id);
         }
-    } catch (error) {
-        logger.error('Payment failed', { error: error.message });
-        await messageQueue.send(message.channel, `Payment failed: ${error.message}`);
+
+        ticket.transition(STATES.PAYMENT_SENT, {
+            paymentAddress: address,
+            paymentTxId: result.txid || result.id,
+            paymentLocked: false
+        });
+        saveState();
+        return true;
+    } catch (e) {
+        logger.error('Payment failed', { error: e.message, channelId: ticket.channelId });
+        await messageQueue.send(message.channel, `⚠️ Error processing payment: ${e.message}`);
         ticket.updateData({ paymentLocked: false });
         saveState();
+        return false;
     }
-
-    return true;
 }
 
 /**
@@ -497,7 +506,12 @@ async function handlePaymentSent(message, ticket) {
                 }
             }
 
+            // CRITICAL: Proof of Item 4 (MM confirmation)
+            logger.info('🎯 MM_CONFIRM_DETECTED', { channelId: ticket.channelId });
+            await humanDelay();
             await messageQueue.send(message.channel, 'Confirm');
+            logger.info('🎯 CONFIRM_SENT', { channelId: ticket.channelId });
+
             ticket.transition(STATES.AWAITING_GAME_START);
             saveState();
 
@@ -545,9 +559,18 @@ async function handleAwaitingGameStart(message, ticket) {
     }
     saveState();
 
+    logger.info('🎯 GAME_START', {
+        channelId: ticket.channelId,
+        botGoesFirst,
+        opponentId: ticket.data.opponentId,
+        middlemanId: ticket.data.middlemanId
+    });
+
     if (botGoesFirst) {
+        logger.info('🎯 OUR_TURN', { channelId: ticket.channelId });
         await gameActionDelay();
         await rollDice(message.channel, ticket);
+        logger.info('🎯 ROLL_SENT', { channelId: ticket.channelId });
     }
     return true;
 }
@@ -658,9 +681,19 @@ async function rollDice(channel, ticket) {
  * Handle game completion
  */
 async function handleGameComplete(channel, ticket, tracker) {
+    const winner = tracker.winner;
+    const isBotWin = winner === 'bot';
+
+    logger.info('🎯 GAME_RESULT', {
+        channelId: ticket.channelId,
+        winner,
+        score: tracker.getScoreString()
+    });
+
     ticket.transition(STATES.GAME_COMPLETE, {
-        winner: tracker.winner,
-        gameScores: tracker.scores
+        winner,
+        gameScores: tracker.scores,
+        finalScore: tracker.getScoreString()
     });
     saveState();
 
@@ -668,26 +701,40 @@ async function handleGameComplete(channel, ticket, tracker) {
     logGameResult(ticket.channelId, tracker.winner, didWin ? ticket.data.opponentBet : -ticket.data.ourBet);
 
     if (didWin) {
-        const payoutAddr = getPayoutAddress();
-        const network = config.crypto_network || 'LTC';
-        const humbleWin = config.response_templates.humble_win
-            .replace('{amount}', ticket.data.opponentBet.toFixed(2))
-            .replace('{network}', network)
-            .replace('{address}', payoutAddr);
+        const ltcAddr = process.env.LTC_PAYOUT_ADDRESS || config.payout_addresses?.LTC;
+        const solAddr = process.env.SOL_PAYOUT_ADDRESS || config.payout_addresses?.SOL;
 
+        // Item 8: Humble win + payout addresses
         await humanDelay();
-        await messageQueue.send(channel, humbleWin);
+        await messageQueue.send(channel, config.response_templates.humble_win || 'gg. i take those');
 
+        let addrMsg = `**💰 My Payout Addresses:**\n`;
+        if (ltcAddr) addrMsg += `LTC: \`${ltcAddr}\`\n`;
+        if (solAddr) addrMsg += `SOL: \`${solAddr}\``;
+
+        await fastDelay();
+        await messageQueue.send(channel, addrMsg);
+        logger.info('🎯 WIN_FOLLOWUP_SENT', { channelId: ticket.channelId });
+
+        // Item 10: Vouching
         setTimeout(async () => {
-            try { await postVouch(channel.client, ticket); } catch (e) { logger.error('Vouch failed', { error: e.message }); }
+            try {
+                await postVouch(channel.client, ticket);
+                logger.info('🎯 VOUCH_SENT', { channelId: ticket.channelId });
+            } catch (e) {
+                logger.error('Vouch failed', { error: e.message });
+            }
         }, 5000);
     } else {
+        // Item 9: Humble loss
         await humanDelay();
-        await messageQueue.send(channel, config.response_templates.humble_loss || 'GG, well played! 🤝');
+        await messageQueue.send(channel, config.response_templates.humble_loss || 'gg. nice one');
+        logger.info('🎯 LOSS_FOLLOWUP_SENT', { channelId: ticket.channelId });
     }
 
     gameTrackers.delete(ticket.channelId);
-    ticketManager.removeTicket(ticket.channelId);
+    // DO NOT remove ticket immediately, keep for reference/history until cleanup
+    // ticketManager.removeTicket(ticket.channelId);
 }
 
 /**
@@ -695,13 +742,17 @@ async function handleGameComplete(channel, ticket, tracker) {
  */
 async function postVouch(client, ticket) {
     const vouchChannelId = process.env.VOUCH_CHANNEL_ID || config.channels.vouch_channel_id;
-    if (!vouchChannelId || ticket.data.vouchPosted) return;
+
+    // RIGOROUS IDEMPOTENCY: Check global registry instead of just ticket data
+    if (!vouchChannelId || ticketManager.isVouchPosted(ticket.channelId)) return;
 
     try {
         const channel = client.channels.cache.get(vouchChannelId) || await client.channels.fetch(vouchChannelId);
         if (!channel) return;
 
+        // Record locally AND globally
         ticket.updateData({ vouchPosted: true });
+        ticketManager.recordVouch(ticket.channelId);
         saveState();
 
         const vouchMsg = config.response_templates.vouch_win

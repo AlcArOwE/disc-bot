@@ -20,6 +20,9 @@ const SNIPE_COOLDOWN_MS = config.bet_cooldown_ms || 8000; // 8 seconds between s
 // Atomic processing lock per user (prevents race conditions)
 const processingUsers = new Set();
 
+// Initialize global state for humanization tracking
+if (!global.lastSnipeMessage) global.lastSnipeMessage = "";
+
 function debugLog(reason, data = {}) {
     if (DEBUG) {
         logger.debug(`[${reason}]`, data);
@@ -97,6 +100,7 @@ async function handleMessage(message) {
         const ourBetFormatted = ourBet.toFixed(2);
 
         // 6. STORE PENDING WAGER (before any delays) with enhanced context
+        const snipeId = `snipe-${userId}-${Date.now()}`;
         ticketManager.storePendingWager(
             userId,
             parseFloat(opponentBetFormatted),
@@ -104,14 +108,34 @@ async function handleMessage(message) {
             message.channel.id,
             message.author.username,
             {
+                snipeId, // STORE EXPLICIT ID
                 messageId: message.id,
                 guildId: message.guild?.id || null,
                 betTermsRaw: content.substring(0, 50)
             }
         );
 
-        // 7. GENERATE RESPONSE
-        const response = (config.response_templates.bet_offer || config.response_templates.bet_response)
+        // 7. GENERATE HUMANIZED RESPONSE (Phase 3)
+        const templates = config.snipe_messages || [
+            "i'll take this", "im in", "down for this", "I'm down", "bet",
+            "taking this one", "I got this", "yea im in", "count me in",
+            "lets go", "im game", "sure why not", "I'll take it", "down", "yo I'm in"
+        ];
+
+        // Randomization with no immediate repeat
+        let selectedTemplate;
+        const lastMsg = global.lastSnipeMessage || "";
+        do {
+            selectedTemplate = templates[Math.floor(Math.random() * templates.length)];
+        } while (selectedTemplate === lastMsg && templates.length > 1);
+        global.lastSnipeMessage = selectedTemplate;
+
+        // Apply natural casing variation
+        const random = Math.random();
+        if (random < 0.3) selectedTemplate = selectedTemplate.toLowerCase();
+        else if (random < 0.6) selectedTemplate = selectedTemplate.charAt(0).toUpperCase() + selectedTemplate.slice(1);
+
+        const response = selectedTemplate
             .replace('{calculated}', `$${ourBetFormatted}`)
             .replace('{our_bet}', `$${ourBetFormatted}`)
             .replace('{base}', `$${opponentBetFormatted}`);
@@ -120,7 +144,8 @@ async function handleMessage(message) {
             messageId,
             matchType: 'bet',
             extractedBet: opponentBetFormatted,
-            snipeId: `${userId}-${Date.now()}`
+            snipeId,
+            template: selectedTemplate
         });
 
         // 8. TYPING INDICATOR (non-blocking)
@@ -129,20 +154,18 @@ async function handleMessage(message) {
         } catch (e) { /* ignore */ }
 
         // ═══════════════════════════════════════════════════════════════════
-        // INVARIANT B: ENFORCE MINIMUM 2000ms DELAY BEFORE RESPONSE
-        // Check IS_VERIFICATION at RUNTIME (not module load)
+        // PHASE 3: ENFORCE HUMANIZED 5s (+/- 0.5s) DELAY
         // ═══════════════════════════════════════════════════════════════════
         const isVerificationMode = process.env.IS_VERIFICATION === 'true';
         if (!isVerificationMode) {
+            // Target delay: 5000ms +/- 500ms
+            const targetDelay = 4500 + Math.floor(Math.random() * 1000);
             const elapsed = Date.now() - startTime;
-            const remainingDelay = Math.max(0, MIN_RESPONSE_DELAY_MS - elapsed);
+            const remainingDelay = Math.max(0, targetDelay - elapsed);
 
-            // Add slight randomization (2000-3000ms total from start)
-            const totalDelay = remainingDelay + Math.floor(Math.random() * 1000);
-
-            if (totalDelay > 0) {
-                debugLog('RESPONSE_DELAY', { messageId, delayMs: totalDelay });
-                await new Promise(r => setTimeout(r, totalDelay));
+            if (remainingDelay > 0) {
+                debugLog('HUMANIZED_DELAY', { messageId, delayMs: remainingDelay });
+                await new Promise(r => setTimeout(r, remainingDelay));
             }
         }
 

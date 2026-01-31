@@ -12,6 +12,10 @@ class TicketManager {
         this.cooldowns = new Map();
         this.pendingWagers = new Map();
 
+        // Rigorous Idempotency Registries (Requirement 3 & 10)
+        this.processedTransactions = new Map(); // msgId -> txId/dryRunId
+        this.vouchedChannels = new Set();      // Set of channelIds
+
         this.cooldownDuration = (config.limit_settings?.user_cooldown_minutes || 5) * 60 * 1000;
         this.pendingWagerExpiryMs = 2 * 60 * 1000;
 
@@ -68,6 +72,25 @@ class TicketManager {
         this.triggerSave();
     }
 
+    // Idempotency methods
+    isTransactionProcessed(messageId) {
+        return this.processedTransactions.has(messageId);
+    }
+
+    recordTransaction(messageId, txId) {
+        this.processedTransactions.set(messageId, txId);
+        this.triggerSave();
+    }
+
+    isVouchPosted(channelId) {
+        return this.vouchedChannels.has(channelId);
+    }
+
+    recordVouch(channelId) {
+        this.vouchedChannels.add(channelId);
+        this.triggerSave();
+    }
+
     // Trigger save (debounced slightly to prevent IO thrashing if many changes happen at once)
     triggerSave() {
         const { saveState } = require('./persistence');
@@ -87,6 +110,7 @@ class TicketManager {
             username,
             timestamp: Date.now(),
             // Enhanced correlation data
+            snipeId: snipeContext.snipeId || `legacy-${Date.now()}`,
             messageId: snipeContext.messageId || null,
             guildId: snipeContext.guildId || null,
             betTermsRaw: snipeContext.betTermsRaw || `${opponentBet}v${opponentBet}`,
@@ -220,7 +244,9 @@ class TicketManager {
         return {
             tickets: [...this.tickets.values()].map(t => t.toJSON()),
             pendingWagers: [...this.pendingWagers.entries()],
-            cooldowns: [...this.cooldowns.entries()]
+            cooldowns: [...this.cooldowns.entries()],
+            processedTransactions: [...this.processedTransactions.entries()],
+            vouchedChannels: [...this.vouchedChannels]
         };
     }
 
@@ -228,10 +254,14 @@ class TicketManager {
         this.tickets.clear();
         this.pendingWagers.clear();
         this.cooldowns.clear();
+        this.processedTransactions.clear();
+        this.vouchedChannels.clear();
 
         const ticketsData = data.tickets || [];
         const wagersData = data.pendingWagers || [];
         const cooldownsData = data.cooldowns || [];
+        const txData = data.processedTransactions || [];
+        const vouchData = data.vouchedChannels || [];
 
         for (const d of ticketsData) {
             const t = TicketStateMachine.fromJSON(d);
@@ -242,6 +272,12 @@ class TicketManager {
         }
         for (const [userId, timestamp] of cooldownsData) {
             this.cooldowns.set(userId, timestamp);
+        }
+        for (const [msgId, txId] of txData) {
+            this.processedTransactions.set(msgId, txId);
+        }
+        for (const channelId of vouchData) {
+            this.vouchedChannels.add(channelId);
         }
     }
 
@@ -266,6 +302,30 @@ class TicketManager {
             t.state === STATES.AWAITING_PAYMENT_ADDRESS ||
             t.state === STATES.PAYMENT_SENT
         );
+    }
+
+    /**
+     * Identify completed bot wins that haven't been vouched
+     */
+    getTicketsNeedingVouch() {
+        const { STATES } = require('./StateMachine');
+        return [...this.tickets.values()].filter(t =>
+            t.state === STATES.GAME_COMPLETE &&
+            t.data.winner === 'bot' &&
+            !this.isVouchPosted(t.channelId)
+        );
+    }
+
+    getStats() {
+        const active = this.getActiveTickets();
+        const complete = [...this.tickets.values()].filter(t => t.isComplete());
+        return {
+            activeCount: active.length,
+            completeCount: complete.length,
+            pendingWagers: this.pendingWagers.size,
+            vouchedCount: this.vouchedChannels.size,
+            txCount: this.processedTransactions.size
+        };
     }
 }
 

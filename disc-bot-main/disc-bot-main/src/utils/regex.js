@@ -21,11 +21,9 @@ const CRYPTO_PATTERNS = {
 };
 
 // Pattern to detect middleman starting the game
-// e.g., "@User1 first, @User2 second" or "User1 goes first"
-// Pattern to detect middleman starting the game
-// e.g., "@User1 first, @User2 second" or "User1 goes first" or "ft5 @bot first" or "you first"
-// Added: Broadened to catch "You go", "go first", "your turn", "roll"
-const GAME_START_PATTERN = /(?:ft\d+|game|dice|start|ready|gl|Confirm|roll|go|turn|paid|gg|glhf|hf).*?(?:<@!?(\d+)>|(\b\w+\b)).*?(?:first|go|turn|start|roll|payout|send)/i;
+// e.g., "game start", "rolling", "go", "begin", "ft5 @bot first", "you first"
+const GAME_START_PATTERN = /(?:game\s*start|rolling|begin|go|ft\d+|ready|start).*?(?:<@!?(\d+)>|(\b\w+\b))?.*?(?:first|go|turn|start|roll)|(?:you|bot|he|she)\s*(?:go|first|start)/i;
+const GAME_START_KEYWORDS = ['game start', 'rolling', 'begin', 'go', 'start the game', 'ready to roll'];
 const GAME_START_FALLBACK = /(?:<@!?(\d+)>|(\b\w+\b)).*?(?:first|go|turn|start|roll)/i;
 
 // Pattern to detect dice roll results from dice bots
@@ -113,24 +111,27 @@ function extractCryptoAddress(message, network) {
  * @returns {{ userId: string } | null}
  */
 function extractGameStart(message) {
+    const lower = message.toLowerCase();
+
+    // Explicit keywords check (Item 5)
+    const hasKeyword = GAME_START_KEYWORDS.some(k => lower.includes(k));
+
     let match = message.match(GAME_START_PATTERN);
-    if (!match) {
-        // Fallback: Just look for a mention and "first/go/etc"
+    if (!match && !hasKeyword) {
         match = message.match(GAME_START_FALLBACK);
     }
-    if (!match) return null;
 
-    // Extract userId and username from the match
-    const userId = match[1]; // This captures the ID from <@!ID>
-    const username = match[2]; // This captures the word if no mention
+    if (!match && !hasKeyword) return null;
 
-    // Check if the bot was mentioned anywhere in a "first" context
+    // Extract userId/username if possible
+    const userId = match ? match[1] : null;
+    const username = match ? match[2] : null;
+
+    // Detect if bot goes first
     const botId = process.env.CLIENT_ID || '';
-    const botMention = (botId && (message.includes(`<@${botId}>`) || message.includes(`<@!${botId}>`))) ||
-        message.toLowerCase().includes('bot first') ||
-        message.toLowerCase().includes('you first');
-
-    const firstIsBot = (userId === botId) || botMention;
+    const isBotMentioned = (botId && (lower.includes(`<@${botId}>`) || lower.includes(`<@!${botId}>`)));
+    const botKeywords = ['bot first', 'you first', 'you go first', 'you go', 'bot goes first', 'he win ties'];
+    const firstIsBot = isBotMentioned || botKeywords.some(k => lower.includes(k));
 
     return {
         userId: userId || null,
