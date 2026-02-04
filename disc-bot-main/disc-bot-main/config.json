@@ -1,57 +1,61 @@
 {
     "betting_limits": {
-        "min": 2,
-        "max": 10
+        "min": 1,
+        "max": 50
     },
-    "bet_cooldown_ms": 10000,
-    "snipe_messages": [
-        "bet. i'll take your {base} vs my {calculated} (dice ft5 ltc). i win ties. make ticket",
-        "im in. {calculated} vs {base} (ft5 dice ltc). i win ties. create a ticket and add middleman",
-        "down for this. taking your {base} with my {calculated} (dice ft5 ltc). i win ties. open ticket",
-        "lets go. my {calculated} vs your {base} (ltc dice ft5). i win ties. make ticket",
-        "sure, i'll take that {base} vs my {calculated} (i win ties, ft5 ltc dice). create the ticket",
-        "i got this. {calculated} vs your {base} (dice ft5 ltc). bot wins ties. open ticket",
-        "yo im down for the {base}. my bet is {calculated} (dice ft5 ltc). i win ties. make ticket",
-        "betting {calculated} vs your {base} (ltc ft5 dice). i win ties. open a ticket",
-        "count me in. taking that {base} vs my {calculated} (dice ft5 ltc). i win ties. make ticket",
-        "im game for {base}. my {calculated} is ready (dice ft5 ltc). i win ties. create ticket",
-        "taking this one. {calculated} vs your {base} (ltc dice ft5). i win ties. make ticket",
-        "bet. I'll take it vs {base}. my bet is {calculated} (dice ft5 ltc). i win ties. open ticket",
-        "yea im in. {calculated} vs your {base} (ltc dice ft5). i win ties. create ticket",
-        "down for {base}. my {calculated} vs yours (dice ft5 ltc). i win ties. make ticket",
-        "taking your {base} bet with my {calculated} (dice ft5 ltc). i win ties. open ticket"
-    ],
+    "bet_cooldown_ms": 2500,
+    "advertising": {
+        "enabled": true,
+        "channel_id": "1467864467499909202",
+        "interval_minutes": 10,
+        "templates": [
+            "🎲 **FULLY AUTOMATED DICING** | $1 - $50 | **I WIN TIES** 🤖\n\n🎯 **Special Bonus:** Offer **20.5% - 30% HIGHER** bets! \n🚀 Fast payouts & 24/7 uptime. **Open a ticket to play!**",
+            "🎰 **AUTO DICE BOT** | $1-$50 | FT5 | **BOT WINS TIES** 🤖\n\n⚡ Instant LTC payouts • Always online\n📩 **Create a ticket to start!**",
+            "🎲 Looking for action? **$1-$50 DICE** | First to 5 | I win ties\n\n💰 Fast LTC payments • Transparent gameplay\n🎫 **Open a ticket & let's roll!**",
+            "⚔️ **DICE BATTLES** | $1-$50 | FT5 | Bot wins ties 🎲\n\n🏆 Win up to 30% more on your bet!\n📨 **Ticket = Game on!**",
+            "🎯 **AUTOMATED WAGERING** | Dice | $1-$50 | I win ties\n\n✅ Fully automated • LTC payouts • 24/7\n🎟️ **Start a ticket to play!**",
+            "🔥 **DICE ACTION** | $1-$50 bets | First to 5 wins\n\n⚡ Bot wins ties • Fast payouts\n📩 **Open ticket to challenge me!**",
+            "🎲 **BOT DICE** | $1-$50 | FT5 | Ties = I win 🤖\n\nNo waiting, no delays. Just dice.\n🎫 **Create ticket to start rolling!**",
+            "💎 **PREMIUM DICE BOT** | $1-$50 wagers | FT5\n\n🏅 I win ties • LTC payouts • Always here\n📨 **Ticket up and let's go!**",
+            "🎰 Ready to roll? **$1-$50 DICE** | First to 5\n\n🤖 Automated • Fair • Bot wins ties\n🎟️ **Open a ticket to play now!**",
+            "⚡ **INSTANT DICE** | $1-$50 | FT5 | I win ties\n\n💸 Quick LTC payouts after every game\n📩 **Start a ticket = Start a game!**"
+        ]
+    },
     "message_queue": {
-        "min_delay_ms": 1200,
-        "max_delay_ms": 1800
+        "min_delay_ms": 0,
+        "max_delay_ms": 0
     },
     "payment_safety": {
         "address_allowlist": [],
-        "max_payment_per_tx": 20,
-        "max_daily_usd": 200,
-        "global_max_snipe_usd": 10,
+        "max_payment_per_tx": 50,
+        "max_daily_usd": 500,
+        "global_max_bet_usd": 50,
         "require_crypto_amounts": true,
         "require_ticket_channel_for_payment": true,
+        "ticket_bot_ids": [
+            "558505523315343360",
+            "155149108183695360",
+            "1467123040390480046"
+        ],
         "ticket_channel_patterns": [
-            "ticket",
-            "order-"
+            "ticket-",
+            "order-",
+            "support-"
         ],
         "public_channel_blocklist": [],
         "price_safety": {
             "max_deviation_percentage": 25,
             "hard_min_price": {
                 "LTC": 30,
-                "SOL": 50,
-                "BTC": 40000
+                "SOL": 50
             },
             "hard_max_price": {
                 "LTC": 500,
-                "SOL": 500,
-                "BTC": 250000
+                "SOL": 500
             }
         }
     },
-    "tax_percentage": 0.20,
+    "bonus_percentage": 0.2,
     "middleman_ids": [
         "1112921418930331819",
         "762469356969394197",
@@ -69,16 +73,19 @@
         "922823704776441906",
         "961956566939086858",
         "405935631261368320",
-        "62219049187803136"
+        "62219049187803136",
+        "506064178830639114",
+        "1422059455482433579",
+        "1467123040390480046"
     ],
     "channels": {
-        "vouch_channel_id": "1258789148702146700",
+        "vouch_channel_id": "1467864472797446356",
+        "debug_channel_id": "1467864481001504770",
         "monitored_channels": []
     },
     "payout_addresses": {
         "LTC": "LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ",
-        "SOL": "Fm2PS2EYpihg5QK9vmqb5zpJLC9BM6d3wCvz7rAmsJgW",
-        "BTC": ""
+        "SOL": "Fm2PS2EYpihg5QK9vmqb5zpJLC9BM6d3wCvz7rAmsJgW"
     },
     "crypto_network": "LTC",
     "proxy_url": "",
@@ -90,18 +97,16 @@
         "dice_command": "-roll"
     },
     "delays": {
-        "typing_min_ms": 500,
-        "typing_max_ms": 1000,
-        "response_base_ms": 300,
-        "response_per_char_ms": 10,
-        "snipe_response_ms": 2000,
-        "snipe_cooldown_ms": 8000
+        "typing_min_ms": 0,
+        "typing_max_ms": 0,
+        "response_base_ms": 0,
+        "response_per_char_ms": 0
     },
     "response_templates": {
-        "bet_offer": "vs my {calculated} I win ties (dice,ft5,LTC)",
-        "vouch_win": "!vouch won ${amount} vs {opponent} mm {middleman}",
+        "bet_offer": "You: ${opponentBet} / Me: ${ourBet}. I win ties. Confirm?",
+        "vouch_win": "+vouch won {amount} vs {opponent} mm {middleman}",
         "payment_sent": "Sent ${amount}! TXID: {txid}",
-        "humble_win": "Good game! 🤝 I was lucky this time. Send ${amount} (${network}) to: `{address}`",
+        "humble_win": "Good game! 🤝 I was lucky this time. Send {amount} ({network}) to: `{address}`",
         "humble_loss": "GG, well played! 🤝 You were the better player this round."
     },
     "cancellation_keywords": [
@@ -109,7 +114,6 @@
         "cancel",
         "refund",
         "stuck",
-        "re-roll",
         "reset"
     ]
 }

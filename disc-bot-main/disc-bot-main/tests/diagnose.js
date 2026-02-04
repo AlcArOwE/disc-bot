@@ -20,7 +20,7 @@ console.log('-'.repeat(40));
 
 let config;
 try {
-    config = require('./config.json');
+    config = require('../config.json');
     console.log('✅ config.json loaded successfully');
 } catch (e) {
     console.log('❌ FAILED to load config.json:', e.message);
@@ -84,7 +84,6 @@ const requiredFiles = [
     'src/bot/client.js',
     'src/bot/events/messageCreate.js',
     'src/bot/events/channelCreate.js',
-    'src/bot/handlers/sniper.js',
     'src/bot/handlers/ticket.js',
     'src/state/TicketManager.js',
     'src/crypto/index.js'
@@ -92,7 +91,7 @@ const requiredFiles = [
 
 let allFilesExist = true;
 for (const file of requiredFiles) {
-    const exists = fs.existsSync(path.join(__dirname, file));
+    const exists = fs.existsSync(path.join(__dirname, '..', file));
     console.log(`   ${exists ? '✅' : '❌'} ${file}`);
     if (!exists) allFilesExist = false;
 }
@@ -162,7 +161,7 @@ if (!token) {
         console.log('Watch for these log messages:');
         console.log('   📨 MSG_RECEIVED - Shows every message the bot receives');
         console.log('   🎯 MIDDLEMAN MESSAGE DETECTED - MM routing working');
-        console.log('   📋 Pending wager - Wager stored after snipe');
+        console.log('   📋 Pending wager - Wager stored after discovery');
         console.log('');
 
         client.destroy();

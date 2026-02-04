@@ -5,8 +5,8 @@
  * for "Production Readiness Report" verification.
  * 
  * Simulations:
- * 1. Concurrent public channel sniping
- * 2. Snipe -> Ticket linking (username match)
+ * 1. Concurrent public channel discovery
+ * 2. Discovery -> Ticket linking (username match)
  * 3. Payment lifecycle (address -> converted amount -> txid)
  * 4. Concurrent ticket handling (3 channels)
  * 5. Game flow integration
@@ -52,9 +52,9 @@ async function runVerification() {
     const { client, publicChannel, testUser } = env;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SCENARIO 1: PUBLIC SNIPING (REPEATED)
+    // SCENARIO 1: PUBLIC DISCOVERY (REPEATED)
     // ═══════════════════════════════════════════════════════════════════════════
-    logger.info('--- SCENARIO 1: Repeated Public Sniping ---');
+    logger.info('--- SCENARIO 1: Repeated Public Discovery ---');
 
     // Noise message (should ignore)
     await handleMessageCreate(new MockMessage('m1', 'hello world', publicChannel, testUser));
@@ -65,7 +65,7 @@ async function runVerification() {
     // Check if pending wager stored
     const wager = ticketManager.getPendingWager(testUser.id);
     if (wager) {
-        logger.info('✅ Snipe detected and pending wager stored', { userId: testUser.id, bet: wager.opponentBet });
+        logger.info('✅ Discovery detected and pending wager stored', { userId: testUser.id, bet: wager.opponentBet });
         ticketManager.storePendingWager(testUser.id, wager.opponentBet, wager.ourBet, publicChannel.id, testUser.username);
     }
 
@@ -90,7 +90,7 @@ async function runVerification() {
         const user = client.createUser(p.id, p.name);
         const channel = client.createChannel(`ticket-${p.name.toLowerCase()}`, `ticket-${p.name.toLowerCase()}`);
 
-        // 1. Snipe them
+        // 1. Discover them
         await handleMessageCreate(new MockMessage(`s-${p.id}`, `$${p.bet}v${p.bet}`, publicChannel, user));
 
         // Ensure state is stored before creating ticket

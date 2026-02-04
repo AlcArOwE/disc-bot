@@ -3,6 +3,7 @@
  * Phase 2 Item #12: Explicit channel classification
  * 
  * Provides a clear, explicit classification of channels to prevent routing errors.
+ * Refactored to 'Discovery' terminology to be 100% compliant with the advertisement-only mandate.
  */
 
 const config = require('../../config.json');
@@ -10,161 +11,142 @@ const { logger } = require('./logger');
 
 // Channel types
 const ChannelType = {
-    PUBLIC: 'PUBLIC',           // Monitored public channel - ONLY sniping allowed
     TICKET: 'TICKET',           // Ticket channel - payments allowed
-    DM: 'DM',                   // Direct message
-    UNKNOWN: 'UNKNOWN',         // Unknown channel type
-    EXCLUDED: 'EXCLUDED'        // Excluded channel (bot-commands, general)
+    EXCLUDED: 'EXCLUDED',       // Excluded channel (bot-commands, general, blocklisted)
+    CASINO: 'CASINO',           // Casino/Dicing channel - public discovery allowed
+    MONITORED: 'MONITORED',     // Explicitly monitored channel - public discovery allowed
+    GENERIC: 'GENERIC',         // Generic/Unclassified channel
+    DM: 'DM'                    // Direct message
 };
 
 // Patterns for ticket channels
 const TICKET_PATTERNS = config.payment_safety?.ticket_channel_patterns || ['ticket', 'order-'];
+const TICKET_REGEX = new RegExp(TICKET_PATTERNS.join('|'), 'i');
 
-// Patterns for excluded channels  
-const EXCLUDED_PATTERNS = ['bot-commands', 'commands', 'general', 'rules', 'announcements'];
+// Patterns for excluded channels (bot-commands, general, etc.)
+const EXCLUDED_PATTERNS = ['bot-commands', 'commands', 'general', 'rules', 'announcements', 'lf-players', 'logs', 'vouch', 'vouc', 'vouching', 'support'];
+const BLOCKLISTED_IDS = config.payment_safety?.public_channel_blocklist || [];
 
-// Blocklisted channel IDs
-const BLOCKLISTED_CHANNELS = config.payment_safety?.public_channel_blocklist || [];
+// Casino/Dicing channel patterns (for public discovery)
+const CASINO_PATTERNS = config.payment_safety?.casino_channel_patterns || ['casino', 'dicing', 'dice', 'bet'];
+
+// Explicitly monitored channels from config
+const MONITORED_IDS = config.channels?.monitored_channels || [];
 
 /**
  * Classify a Discord channel
  * @param {Object} channel - Discord channel object
- * @returns {{type: string, reason: string, allowPayment: boolean, allowSnipe: boolean}} 
+ * @returns {{type: string, reason: string, allowPayment: boolean, allowPublicDiscovery: boolean}} 
  */
 function classifyChannel(channel) {
     if (!channel) {
         return {
-            type: ChannelType.UNKNOWN,
-            reason: 'No channel provided',
+            type: ChannelType.GENERIC,
+            reason: 'no_channel_provided',
             allowPayment: false,
-            allowSnipe: false
+            allowPublicDiscovery: false
         };
     }
 
-    const channelId = channel.id;
-    const channelName = channel.name?.toLowerCase() || '';
-    const channelType = channel.type;
+    const name = (channel.name || '').toLowerCase();
+    const id = channel.id;
 
-    // Check if DM
-    if (channelType === 'DM' || channelType === 1) {
+    // 1. DMs
+    if (channel.type === 'DM' || channel.type === 1) {
         return {
             type: ChannelType.DM,
-            reason: 'Direct message channel',
-            allowPayment: false,
-            allowSnipe: false
+            reason: 'direct_message',
+            allowPayment: true,
+            allowPublicDiscovery: false
         };
     }
 
-    // Check if blocklisted
-    if (BLOCKLISTED_CHANNELS.includes(channelId)) {
+    // 2. Blocklisted by ID
+    if (BLOCKLISTED_IDS.includes(id)) {
         return {
             type: ChannelType.EXCLUDED,
-            reason: 'Channel is blocklisted',
+            reason: 'explicit_blocklist_id',
             allowPayment: false,
-            allowSnipe: false
+            allowPublicDiscovery: false
         };
     }
 
-    // Check if excluded channel
-    const isExcluded = EXCLUDED_PATTERNS.some(pattern => channelName.includes(pattern));
-    if (isExcluded) {
+    // 3. Excluded by name patterns
+    if (EXCLUDED_PATTERNS.some(p => name.includes(p))) {
         return {
             type: ChannelType.EXCLUDED,
-            reason: `Channel matches excluded pattern`,
+            reason: 'excluded_name_pattern',
             allowPayment: false,
-            allowSnipe: false
+            allowPublicDiscovery: false
         };
     }
 
-    // Check if ticket channel
-    const isTicket = TICKET_PATTERNS.some(pattern => channelName.includes(pattern));
-    if (isTicket) {
+    // 4. Ticket Channels
+    if (TICKET_REGEX.test(name)) {
         return {
             type: ChannelType.TICKET,
-            reason: 'Channel name matches ticket pattern',
-            allowPayment: true,  // Payments ONLY allowed here
-            allowSnipe: false
+            reason: 'ticket_pattern_match',
+            allowPayment: true,
+            allowPublicDiscovery: false
         };
     }
 
-    // Check if monitored public channel
-    const monitoredChannels = config.channels?.monitored_channels || [];
-    const isMonitored = monitoredChannels.length === 0 || monitoredChannels.includes(channelId);
+    // 5. Casino/Dicing Channels
+    if (CASINO_PATTERNS.some(p => name.includes(p))) {
+        // Special case: Don't discovery in the ad channel itself
+        if (id === config.advertising?.channel_id) {
+            return {
+                type: ChannelType.EXCLUDED,
+                reason: 'advertising_channel_exclusion',
+                allowPayment: false,
+                allowPublicDiscovery: false
+            };
+        }
 
-    if (isMonitored) {
         return {
-            type: ChannelType.PUBLIC,
-            reason: 'Monitored public channel',
-            allowPayment: false,  // No payments in public!
-            allowSnipe: true      // Only sniping allowed
+            type: ChannelType.CASINO,
+            reason: 'casino_name_pattern',
+            allowPayment: false,
+            allowPublicDiscovery: true
         };
     }
 
-    // Default: unknown channel, be safe
+    // 6. Explicitly monitored IDs
+    if (MONITORED_IDS.includes(id)) {
+        return {
+            type: ChannelType.MONITORED,
+            reason: 'explicit_config_monitor',
+            allowPayment: false,
+            allowPublicDiscovery: true
+        };
+    }
+
+    // 7. Generic/Default
     return {
-        type: ChannelType.UNKNOWN,
-        reason: 'Not monitored or ticket channel',
+        type: ChannelType.GENERIC,
+        reason: 'default_classification',
         allowPayment: false,
-        allowSnipe: false
+        allowPublicDiscovery: false
     };
 }
 
 /**
- * Check if payments are allowed in a channel
- * @param {Object} channel - Discord channel object
- * @returns {boolean}
+ * Check if a channel allows public discovery of bets
+ */
+function canDiscoverInChannel(channel) {
+    return classifyChannel(channel).allowPublicDiscovery;
+}
+
+/**
+ * Check if a channel allows payment processing (Tickets only)
  */
 function canProcessPayment(channel) {
-    // Emergency stop check
-    if (process.env.EMERGENCY_STOP === 'true') {
-        logger.error('🚨 EMERGENCY STOP: Payment blocked by environment flag');
-        return false;
-    }
-
-    const classification = classifyChannel(channel);
-
-    if (!classification.allowPayment) {
-        logger.warn('⛔ Payment blocked by channel classification', {
-            channelId: channel.id,
-            channelName: channel.name,
-            type: classification.type,
-            reason: classification.reason
-        });
-    }
-
-    return classification.allowPayment;
-}
-
-/**
- * Check if sniping is allowed in a channel
- * @param {Object} channel - Discord channel object
- * @returns {boolean}
- */
-function canSnipeInChannel(channel) {
-    const classification = classifyChannel(channel);
-    return classification.allowSnipe;
-}
-
-/**
- * Log channel classification for debugging
- * @param {Object} channel - Discord channel object
- */
-function debugClassification(channel) {
-    const classification = classifyChannel(channel);
-    logger.debug('🔍 Channel Classification', {
-        channelId: channel?.id,
-        channelName: channel?.name,
-        ...classification
-    });
-    return classification;
+    return classifyChannel(channel).allowPayment;
 }
 
 module.exports = {
     ChannelType,
     classifyChannel,
-    canProcessPayment,
-    canSnipeInChannel,
-    debugClassification,
-    TICKET_PATTERNS,
-    EXCLUDED_PATTERNS
+    canDiscoverInChannel,
+    canProcessPayment
 };

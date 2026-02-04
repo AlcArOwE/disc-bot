@@ -9,10 +9,10 @@
  * 4. Persistence Integrity
  */
 
-const { STATES } = require('./src/state/StateMachine');
-const { ticketManager } = require('./src/state/TicketManager');
-const ScoreTracker = require('./src/game/ScoreTracker');
-const { extractBetAmounts, extractCryptoAddress } = require('./src/utils/regex');
+const { STATES } = require('../src/state/StateMachine');
+const { ticketManager } = require('../src/state/TicketManager');
+const ScoreTracker = require('../src/game/ScoreTracker');
+const { extractBetAmounts, extractCryptoAddress } = require('../src/utils/regex');
 
 // Mock data
 const MOCK_CHANNEL_ID = '123456789';

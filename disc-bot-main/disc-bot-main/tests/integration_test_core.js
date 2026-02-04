@@ -9,11 +9,11 @@ console.log('══════════════════════�
 
 async function runTest() {
     // Import core modules
-    const { ticketManager } = require('./src/state/TicketManager');
-    const { STATES } = require('./src/state/StateMachine');
-    const ScoreTracker = require('./src/game/ScoreTracker');
-    const { extractCryptoAddress } = require('./src/utils/regex');
-    const { idempotencyStore } = require('./src/state/IdempotencyStore');
+    const { ticketManager } = require('../src/state/TicketManager');
+    const { STATES } = require('../src/state/StateMachine');
+    const ScoreTracker = require('../src/game/ScoreTracker');
+    const { extractCryptoAddress } = require('../src/utils/regex');
+    const { idempotencyStore } = require('../src/state/IdempotencyStore');
 
     console.log('## TEST 1: Ticket Creation & Wager Linking\n');
 

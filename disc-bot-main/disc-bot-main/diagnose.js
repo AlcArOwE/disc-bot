@@ -24,7 +24,7 @@ async function main() {
     console.log('╚═══════════════════════════════════════════════════════════════════╝\n');
 
     const basicTests = run('npm test', 'Standard Logic Tests');
-    const nuclearTests = run('node NUCLEAR_FINAL_TEST.js', 'Nuclear Stress & Concurrency Tests');
+    const nuclearTests = run('node tests/NUCLEAR_FINAL_TEST.js', 'Nuclear Stress & Concurrency Tests');
 
     if (basicTests && nuclearTests) {
         console.log('\n✅ ALL DIAGNOSTICS PASSED: BOT IS PRODUCTION READY 🚀');

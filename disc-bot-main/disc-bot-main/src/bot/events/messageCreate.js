@@ -4,12 +4,12 @@
  */
 
 const { logger } = require('../../utils/logger');
-const sniperHandler = require('../handlers/sniper');
 const ticketHandler = require('../handlers/ticket');
 const config = require('../../../config.json');
 const { ticketManager } = require('../../state/TicketManager');
-const { DICE_RESULT_PATTERN } = require('../../utils/regex');
+const { DICE_RESULT_PATTERN, isDynoTicketNotification } = require('../../utils/regex');
 const { classifyChannel, ChannelType } = require('../../utils/channelClassifier');
+const testTicketSystem = require('../handlers/testTicketSystem');
 
 const DEBUG = process.env.DEBUG === '1';
 
@@ -58,7 +58,9 @@ function logMessageIn(message) {
  * Log routing decision
  */
 function logRoutingDecision(message, decision, reason) {
-    logger.info(`🔀 ROUTING: ${decision}`, {
+    const isSim = message.guild?.id === "1467858063594754212";
+    const prefix = isSim ? "🧪 [SIM_DEBUG] " : "🔀 ";
+    logger.info(`${prefix}ROUTING: ${decision}`, {
         channelId: message.channel.id,
         channelName: message.channel.name || 'DM',
         authorId: message.author.id,
@@ -67,31 +69,42 @@ function logRoutingDecision(message, decision, reason) {
     });
 }
 
-/**
- * Handle incoming messages
- * @param {Message} message - Discord message
- */
 async function handleMessageCreate(message) {
-    // ═══════════════════════════════════════════════════════════════════════
-    // FORENSIC: First line of handler - proves events fire
-    // ═══════════════════════════════════════════════════════════════════════
-    logger.info('🔥 HANDLER_FIRED: messageCreate', {
-        messageId: message?.id || 'NO_ID',
-        channelId: message?.channel?.id || 'NO_CHANNEL',
-        channelName: message?.channel?.name || 'NO_NAME',
-        authorId: message?.author?.id || 'NO_AUTHOR',
-        authorName: message?.author?.username || 'NO_USERNAME',
-        contentPreview: message?.content?.slice(0, 50) || 'NO_CONTENT'
-    });
-
     if (!message || !message.id) return;
-
-    // MESSAGE_IN log (per spec)
-    logMessageIn(message);
 
     const messageId = message.id;
     const channelId = message.channel.id;
     const authorId = message.author.id;
+    const authorName = message.author.username;
+    const contentPreview = message.content?.slice(0, 50) || 'NO_CONTENT';
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MANDATORY DRILL LOGGING: TICKET_MSG_IN
+    // ═══════════════════════════════════════════════════════════════════════
+    const ticket = ticketManager.getTicket(channelId);
+    if (ticket || message.channel.name?.includes('ticket') || message.channel.name?.includes('order')) {
+        logger.info('TICKET_MSG_IN', {
+            ticketId: ticket?.id || 'NEW',
+            channelId,
+            messageId,
+            authorId,
+            authorName,
+            contentPreview
+        });
+    } else {
+        // Standard forensic log for non-ticket channels
+        logger.info('🔥 HANDLER_FIRED: messageCreate', {
+            messageId,
+            channelId,
+            channelName: message.channel.name || 'NO_NAME',
+            authorId,
+            authorName,
+            contentPreview
+        });
+    }
+
+    // MESSAGE_IN log (per spec)
+    logMessageIn(message);
 
     // ═══════════════════════════════════════════════════════════════════════
     // INVARIANT 1: EXACTLY-ONCE PROCESSING (TTL-based)
@@ -110,24 +123,36 @@ async function handleMessageCreate(message) {
         // EARLY FILTERS (All logged with reason codes)
         // ═══════════════════════════════════════════════════════════════════
 
-        // IGNORE_SELF (except own dice results in tickets)
+        // IGNORE_SELF (except in tickets where we need to process our own dice results)
         if (authorId === message.client.user.id) {
             const ticket = ticketManager.getTicket(channelId);
-            if (ticket && DICE_RESULT_PATTERN.test(message.content)) {
-                // Allow own dice results to sync game state
-            } else {
-                debugLog('IGNORE_SELF', { messageId });
+            if (!ticket) {
+                logger.info('DECISION', {
+                    ticketId: 'N/A',
+                    outcome: 'IGNORED',
+                    reasonCode: 'IGNORE_SELF',
+                    stateAfter: 'N/A'
+                });
                 return;
             }
         }
 
-        // Handle !wallet command (DM only)
-        if (channelClass.type === ChannelType.DM && message.content.toLowerCase().trim() === '!wallet') {
-            const ltcAddress = process.env.LTC_PAYOUT_ADDRESS || config.payout_addresses?.LTC || 'Not configured';
-            const solAddress = process.env.SOL_PAYOUT_ADDRESS || config.payout_addresses?.SOL || 'Not configured';
-            await message.reply(`**💰 My Wallet Addresses:**\n\n**LTC:** \`${ltcAddress}\`\n**SOL:** \`${solAddress}\``);
-            logRoutingDecision(message, 'HANDLED', 'Wallet command in DM');
+        // Handle test environment ticket creation (!claim)
+        const testHandled = await testTicketSystem.handleBetMarketMessage(message);
+        if (testHandled) {
+            logRoutingDecision(message, 'TEST_TICKET_INIT', 'Test ticket system processed claim');
             return;
+        }
+
+        // Handle DM Commands (Robust System)
+        if (channelClass.type === ChannelType.DM) {
+            // Lazy load to prevent circular deps
+            const dmHandler = require('../handlers/dmCommands');
+            const handled = await dmHandler.handle(message);
+            if (handled) {
+                logRoutingDecision(message, 'DM_COMMAND', 'Processed by DM handler');
+                return;
+            }
         }
 
         // IGNORE_EXCLUDED
@@ -165,45 +190,41 @@ async function handleMessageCreate(message) {
         // Priority 1: Existing Ticket
         if (existingTicket) {
             // CRITICAL: Once a ticket exists for this ID, we ALWAYS route it
-            // even if the channel was renamed (Bug fix for staged tickets)
-            logger.debug('🎯 ROUTING_TO_ACTIVE_TICKET', {
-                channelId,
-                state: existingTicket.getState(),
-                authorName: message.author.username
-            });
             await ticketHandler.handleMessage(message);
             return;
         }
 
-        // Priority 2: Public Sniping
-        if (channelClass.type === ChannelType.PUBLIC && channelClass.allowSnipe) {
-            const sniped = await sniperHandler.handleMessage(message);
-            if (sniped) {
-                logRoutingDecision(message, 'SNIPED', 'New bet detected');
-                return;
-            }
-            debugLog('IGNORE_NO_MATCH', { messageId, channelId });
-            return;
-        }
-
-        // Priority 3: Potential Ticket Trigger or Mention Recovery
+        // Priority 2: Potential Ticket Trigger or Mention Recovery
         const handled = await ticketHandler.handleMessage(message);
         if (handled) {
-            const decision = existingTicket ? 'TICKET_UPDATE' : 'TICKET_INIT';
-            logRoutingDecision(message, decision, 'Ticket handler processed message');
+            logRoutingDecision(message, 'TICKET_INIT', 'Ticket handler processed message');
             return;
         }
 
-        // Priority 4: Mention Recovery (Lazy Discovery)
+        // Priority 4: Discovery (STRICT RESTRAINT)
         const botId = message.client.user.id;
-        if (message.mentions.has(botId) && !existingTicket) {
-            logger.info('🔍 MENTION_DISCOVERY: Bot mentioned in untracked channel', {
+        const lowerContent = (message.content + ' ' + (message.embeds?.[0]?.description || '')).toLowerCase();
+        const hasDicingTerms = ['dice', 'wager', 'bet', 'roll', 'vs', 'ft5'].some(k => lowerContent.includes(k));
+        const isBotNotification = isTrustedTicketBot(authorId) && isDynoTicketNotification(getFullContent(message));
+
+        // Only discover if mentioned OR it's a bot notification OR contains gambling terms
+        if (!existingTicket && (message.mentions.has(botId) || isBotNotification || hasDicingTerms)) {
+            // SPARTAN RULE: NEVER reply to public messages. 
+            // We only trigger discovery if it's a TICKET channel or if it's a mention.
+            // If it's a public channel (CASINO/MONITORED), we only "discover" but do not send messages.
+
+            logger.info('🔍 DISCOVERY_TRIGGERED', {
                 channelId,
-                channelName: message.channel.name
+                reason: isBotNotification ? 'BOT_NOTIFICATION' : (message.mentions.has(botId) ? 'MENTION' : 'GAMBLING_KEYWORDS')
             });
+
+            // If this is a public channel, we MUST NOT reply. 
+            // However, handlePotentialNewTicket typically sends an intro message.
+            // We should only allow handlePotentialNewTicket to send messages if the channel IS a ticket channel.
+
             const discovered = await ticketHandler.handlePotentialNewTicket(message);
             if (discovered) {
-                logRoutingDecision(message, 'TICKET_DISCOVERED', 'Bot mention triggered ticket link');
+                logRoutingDecision(message, 'TICKET_DISCOVERED', 'Discovery trigger linked ticket');
                 return;
             }
         }
@@ -225,9 +246,19 @@ async function handleMessageCreate(message) {
  * Check if the message is from a dice bot we should listen to
  */
 function isDiceBot(message, ticket) {
-    if (!message.author.bot) return false;
-    if (ticket && (ticket.state === 'GAME_IN_PROGRESS' || ticket.state === 'AWAITING_GAME_START')) {
-        return DICE_RESULT_PATTERN.test(message.content);
+    if (!message.author.bot && message.author.id !== message.client.user.id) return false;
+
+    const diceStates = [
+        'GAME_IN_PROGRESS',
+        'AWAITING_GAME_START',
+        'WAITING_FOR_OUR_TURN',
+        'ROLL_SENT',
+        'WAITING_FOR_RESULT'
+    ];
+
+    if (ticket && diceStates.includes(ticket.state)) {
+        // USE getFullContent to scan embeds!
+        return DICE_RESULT_PATTERN.test(ticketHandler.getFullContent(message));
     }
     return false;
 }
@@ -236,12 +267,8 @@ function isDiceBot(message, ticket) {
  * Check if the bot is trusted to post in ticket channels (e.g., Dyno posts addresses)
  */
 function isTrustedTicketBot(authorId) {
-    // Dyno bot IDs
-    const DYNO_BOT_IDS = ['155149108183695360', '161660517914509312'];
-    // Ticket Tool bot
-    const TICKET_TOOL_ID = '557628352828014614';
-
-    return DYNO_BOT_IDS.includes(authorId) || authorId === TICKET_TOOL_ID;
+    const trustedIds = config.payment_safety?.ticket_bot_ids || [];
+    return trustedIds.includes(authorId);
 }
 
 module.exports = handleMessageCreate;

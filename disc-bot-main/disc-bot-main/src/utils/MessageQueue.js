@@ -1,7 +1,6 @@
 /**
  * Message Queue - Global rate-limited message sender
- * Enforces 2.0-2.5 second spacing between outbound messages
- * to comply with Discord rate limits (R3)
+ * Optimized for high performance / Zero-Latency (0ms delay)
  */
 
 const { logger } = require('./logger');
@@ -12,9 +11,9 @@ class MessageQueue {
         this.queue = [];
         this.processing = false;
         this.lastSendTime = 0;
-        // Configurable adaptive delays (tighter range for Elite performance)
-        this.minDelayMs = config.message_queue?.min_delay_ms || 1200;
-        this.maxDelayMs = config.message_queue?.max_delay_ms || 1800;
+        // Instant performance (No delays)
+        this.minDelayMs = 0;
+        this.maxDelayMs = 0;
         this.maxQueueSize = 100; // Circuit breaker for memory
     }
 
@@ -63,15 +62,12 @@ class MessageQueue {
      * @param {Object} channel - Discord channel
      */
     async sendTyping(channel) {
-        try {
-            await channel.sendTyping();
-        } catch (e) {
-            // Ignore typing errors
-        }
+        // Disabled for speed optimization
+        return;
     }
 
     /**
-     * Process the queue with rate limiting
+     * Process the queue (Optimized for instant delivery)
      */
     async _processQueue() {
         if (this.processing || this.queue.length === 0) {
@@ -83,22 +79,9 @@ class MessageQueue {
         try {
             while (this.queue.length > 0) {
                 const item = this.queue.shift();
-                const now = Date.now();
-                const timeSinceLastSend = now - this.lastSendTime;
-                const requiredDelay = this._getRandomDelay();
-
-                // Wait if needed to maintain rate limit
-                if (timeSinceLastSend < requiredDelay) {
-                    const waitTime = requiredDelay - timeSinceLastSend;
-                    logger.debug('Rate limiting message', { waitMs: waitTime });
-                    await this._sleep(waitTime);
-                }
 
                 try {
-                    // Show typing before sending
-                    await this.sendTyping(item.channel);
-
-                    // Send the message
+                    // Send the message instantly
                     let result;
                     if (item.options.replyTo) {
                         result = await item.options.replyTo.reply(item.content);
@@ -127,17 +110,20 @@ class MessageQueue {
                     if (error.message.includes('rate limit') || error.code === 429) {
                         const backoff = Math.min(5000 * this.errorCount, 30000);
                         logger.warn(`🛑 Rate limit backoff: ${backoff}ms`);
-                        await this._sleep(backoff);
+                        await new Promise(r => setTimeout(r, backoff));
+                    } else if (error.code === 50013 || error.message.includes('Missing Permissions')) {
+                        // PERMISSION ERROR: Do not retry, it won't fix itself
+                        logger.warn(`🚫 Missing permissions for channel ${item.channel.id}. Dropping message.`);
+                        item.reject(error);
+                        continue;
                     }
 
                     item.reject(error);
-                    // CRITICAL: Continue processing queue even after error
                 }
             }
         } catch (fatalError) {
             logger.error('FATAL: MessageQueue loop crashed!', { error: fatalError.message });
         } finally {
-            // CRITICAL: Always reset processing flag to prevent permanent stalls
             this.processing = false;
         }
     }

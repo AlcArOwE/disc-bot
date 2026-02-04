@@ -11,63 +11,85 @@ let started = false;
 /**
  * Handle the ready event when bot connects
  * @param {Client} client - Discord client
+ * @param {TicketDiscovery} ticketDiscovery - Ticket discovery service
  */
-async function handleReady(client) {
+async function handleReady(client, ticketDiscovery) {
     if (started) {
         logger.info('🔄 Bot re-connected to Discord');
         return;
     }
     started = true;
 
+    // Start ticket discovery
+    if (ticketDiscovery) {
+        await ticketDiscovery.start();
+    }
+
     logger.info('═══════════════════════════════════════════');
     logger.info(`🎲 Logged in as ${client.user.tag}`);
     logger.info(`📍 User ID: ${client.user.id}`);
     logger.info('═══════════════════════════════════════════');
 
+    // START ADVERTISING SERVICE IMMEDIATELY
+    try {
+        const adService = require('../../services/AdService');
+        adService.start(client);
+        logger.info('🚀 ADVERTISING_SERVICE_STARTED');
+    } catch (e) {
+        logger.error('Failed to start AdService', { error: e.message });
+    }
+
     // Load saved state (crash recovery)
     loadState();
-
-    // Check for tickets needing attention
-    const pendingPayments = checkRecoveryNeeded();
-    if (pendingPayments.length > 0) {
-        logger.warn('⚠️  ATTENTION: Found pending payment tickets!');
-        pendingPayments.forEach(ticket => {
-            logger.warn(`   - Channel ${ticket.channelId}: State=${ticket.state}, TxID=${ticket.data.paymentTxId}`);
-        });
-    }
-
-    // RIGOROUS RECOVERY: Trigger missed vouches
-    const needingVouch = ticketManager.getTicketsNeedingVouch();
-    if (needingVouch.length > 0) {
-        logger.info(`🎯 Recovery: Found ${needingVouch.length} tickets needing vouches. Triggering...`);
-        const { postVouch } = require('../handlers/ticket');
-        for (const ticket of needingVouch) {
-            setTimeout(() => postVouch(client, ticket).catch(e => logger.error('Vouch recovery failed', { error: e.message })), 2000);
-        }
-    }
-
-    // Start auto-save
     startAutoSave();
 
-    // SELF-HEALING: Scalable batch scanning to ensure 100% recovery of missed downtime
-    const allChannels = await client.channels.fetch();
-    const activeTickets = ticketManager.getActiveTickets();
-    const ticketChannelMap = new Set(activeTickets.map(t => t.channelId));
+    // ═══════════════════════════════════════════════════════════════════════
+    // RECOVERY LOGIC (Wrapped in try-catch to prevent blocking)
+    // ═══════════════════════════════════════════════════════════════════════
+    let activeTickets = []; // Define activeTickets here to ensure scope for later use
+    try {
+        // Check for tickets needing attention
+        const pendingPayments = checkRecoveryNeeded();
+        if (pendingPayments.length > 0) {
+            logger.warn('⚠️  ATTENTION: Found pending payment tickets!');
+            pendingPayments.forEach(ticket => {
+                logger.warn(`   - Channel ${ticket.channelId}: State=${ticket.state}, TxID=${ticket.data.paymentTxId}`);
+            });
+        }
 
-    // 1. Identify "Lost" Tickets (Auto-Discovery)
-    const ticketLikeChannels = allChannels.filter(c => {
-        if (!c.isText()) return false;
-        const name = c.name?.toLowerCase() || '';
-        return (name.startsWith('ticket-') ||
-            name.startsWith('order-') ||
-            name.includes('-ticket-')) &&
-            !ticketChannelMap.has(c.id);
-    });
+        // RIGOROUS RECOVERY: Trigger missed vouches
+        const needingVouch = ticketManager.getTicketsNeedingVouch();
+        if (needingVouch.length > 0) {
+            logger.info(`🎯 Recovery: Found ${needingVouch.length} tickets needing vouches. Triggering...`);
+            const { postVouch } = require('../handlers/ticket');
+            for (const ticket of needingVouch) {
+                setTimeout(() => postVouch(client, ticket).catch(e => logger.error('Vouch recovery failed', { error: e.message })), 10);
+            }
+        }
 
-    if (ticketLikeChannels.size > 0) {
-        logger.info(`🔍 Auto-Discovery: Found ${ticketLikeChannels.size} orphan ticket channels. Attempting restoration...`);
-        // Note: For now we just log them, but in a future update we could attempt full state reconstruction
-        // from history. For Phase 5000, we prioritize robustness of known tickets.
+        // SELF-HEALING: Batch scanning
+        const allChannels = await client.channels.fetch().catch(e => {
+            logger.warn('Discovery: Failed to fetch channels (404/Permissions)', { error: e.message });
+            return null;
+        });
+
+        if (allChannels) {
+            activeTickets = ticketManager.getActiveTickets(); // Assign to the outer-scoped variable
+            const ticketChannelMap = new Set(activeTickets.map(t => t.channelId));
+
+            const ticketLikeChannels = allChannels.filter(c => {
+                if (!c.isText()) return false;
+                const name = c.name?.toLowerCase() || '';
+                return (name.startsWith('ticket-') || name.startsWith('order-') || name.includes('-ticket-')) && !ticketChannelMap.has(c.id);
+            });
+
+            if (ticketLikeChannels.size > 0) {
+                logger.info(`🔍 Auto-Discovery: Found ${ticketLikeChannels.size} orphan ticket channels. Attempting restoration...`);
+                // Note: For now we just log them, but in a future update we could attempt full state reconstruction
+            }
+        }
+    } catch (recoveryError) {
+        logger.error('Non-critical recovery error during channel discovery or initial ticket checks', { error: recoveryError.message });
     }
 
     if (activeTickets.length > 0) {

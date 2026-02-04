@@ -11,6 +11,7 @@ class TicketManager {
         this.tickets = new Map();
         this.cooldowns = new Map();
         this.pendingWagers = new Map();
+        this.gameTrackers = new Map(); // Store ScoreTrackers by channel ID
 
         // Rigorous Idempotency Registries (Requirement 3 & 10)
         this.processedTransactions = new Map(); // msgId -> txId/dryRunId
@@ -38,11 +39,21 @@ class TicketManager {
 
     removeTicket(channelId) {
         if (this.tickets.has(channelId)) {
+            const ticket = this.tickets.get(channelId);
+            if (this.onTicketRemoved) this.onTicketRemoved(channelId);
             this.tickets.delete(channelId);
             this.triggerSave();
             return true;
         }
         return false;
+    }
+
+    getTicketByUser(userId) {
+        return [...this.tickets.values()].find(t => t.data.opponentId === userId && !t.isComplete());
+    }
+
+    isUserInActiveTicket(userId) {
+        return !!this.getTicketByUser(userId);
     }
 
     getActiveTickets() {
@@ -99,9 +110,9 @@ class TicketManager {
 
     /**
      * Store pending wager with enhanced correlation data
-     * @param {object} snipeContext - Full snipe context for correlation
+     * @param {object} discoveryContext - Full discovery context for correlation
      */
-    storePendingWager(userId, opponentBet, ourBet, sourceChannelId, username, snipeContext = {}) {
+    storePendingWager(userId, opponentBet, ourBet, sourceChannelId, username, discoveryContext = {}) {
         if (!this.pendingWagers.has(userId)) {
             this.pendingWagers.set(userId, []);
         }
@@ -115,14 +126,14 @@ class TicketManager {
             username,
             timestamp: Date.now(),
             // Enhanced correlation data
-            snipeId: snipeContext.snipeId || `legacy-${Date.now()}`,
-            messageId: snipeContext.messageId || null,
-            guildId: snipeContext.guildId || null,
-            betTermsRaw: snipeContext.betTermsRaw || `${opponentBet}v${opponentBet}`,
+            discoveryId: discoveryContext.discoveryId || `legacy-${Date.now()}`,
+            messageId: discoveryContext.messageId || null,
+            guildId: discoveryContext.guildId || null,
+            betTermsRaw: discoveryContext.betTermsRaw || `${opponentBet}v${opponentBet}`,
         };
 
         this.pendingWagers.get(userId).push(wager);
-        logger.info('Stored pending wager', { userId, username, opponentBet, ourBet, messageId: snipeContext.messageId });
+        logger.info('Stored pending wager', { userId, username, opponentBet, ourBet, messageId: discoveryContext.messageId });
 
         // Limit wagers per user to 5 to prevent memory leak
         const wagers = this.pendingWagers.get(userId);
@@ -165,6 +176,7 @@ class TicketManager {
 
         // Flatten all current wagers into a single list with scores
         for (const [userId, userWagers] of this.pendingWagers.entries()) {
+            if (!userWagers) continue;
             const wagers = Array.isArray(userWagers) ? userWagers : [userWagers];
             for (const wager of wagers) {
                 // Skip expired wagers
@@ -274,9 +286,26 @@ class TicketManager {
 
     cleanupOldTickets() {
         const now = Date.now();
+        const staleThreshold = 2 * 60 * 60 * 1000; // 2 Hours for incomplete tickets
+        const completeRetention = 10 * 60 * 1000; // 10 Minutes for completed tickets (Step 12)
+
         for (const [channelId, ticket] of this.tickets.entries()) {
-            if (ticket.isComplete() && now - ticket.lastUpdate > 24 * 60 * 60 * 1000) {
-                this.tickets.delete(channelId);
+            const idleTime = now - ticket.updatedAt;
+
+            // 1. Cleanup completed tickets after 10m (Step 12)
+            if (ticket.isComplete() && idleTime > completeRetention) {
+                logger.info('🧹 Cleanup: Removing old completed ticket (Step 12)', { channelId });
+                this.removeTicket(channelId); // Use removeTicket to trigger onTicketRemoved
+                continue;
+            }
+
+            // 2. Cleanup incomplete tickets after 2h of inactivity
+            if (!ticket.isComplete() && idleTime > staleThreshold) {
+                logger.warn('🧹 Cleanup: Cancelling stale incomplete ticket', { channelId, state: ticket.state });
+                ticket.transition('CANCELLED', {
+                    cancellationReason: 'Inactivity timeout'
+                });
+                this.removeTicket(channelId);
             }
         }
     }
@@ -374,6 +403,8 @@ class TicketManager {
         const active = this.getActiveTickets();
         const complete = [...this.tickets.values()].filter(t => t.isComplete());
         return {
+            total: this.tickets.size,
+            active: active.length,
             activeCount: active.length,
             completeCount: complete.length,
             pendingWagers: this.pendingWagers.size,

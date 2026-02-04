@@ -6,8 +6,8 @@
  * ZERO TOLERANCE FOR FAILURE
  */
 
-const { logger } = require('./src/utils/logger');
-const config = require('./config.json');
+const { logger } = require('../src/utils/logger');
+const config = require('../config.json');
 
 console.log('═══════════════════════════════════════════════════════════════');
 console.log('   EXHAUSTIVE REAL-WORLD END-TO-END TEST');
@@ -48,7 +48,7 @@ async function runExhaustiveTest() {
     console.log('## TEST 1: Payment System Real Functionality\n');
 
     test('LTC Handler: Balance check works', async () => {
-        const LitecoinHandler = require('./src/crypto/LitecoinHandler');
+        const LitecoinHandler = require('../src/crypto/LitecoinHandler');
         const handler = new LitecoinHandler();
 
         // This should not throw - it queries real blockchain
@@ -59,7 +59,7 @@ async function runExhaustiveTest() {
     });
 
     test('SOL Handler: Balance check works', async () => {
-        const SolanaHandler = require('./src/crypto/SolanaHandler');
+        const SolanaHandler = require('../src/crypto/SolanaHandler');
         const handler = new SolanaHandler();
 
         const result = await handler.getBalance();
@@ -69,7 +69,7 @@ async function runExhaustiveTest() {
     });
 
     test('BTC Handler: Balance check works', async () => {
-        const BitcoinHandler = require('./src/crypto/BitcoinHandler');
+        const BitcoinHandler = require('../src/crypto/BitcoinHandler');
         const handler = new BitcoinHandler();
 
         const result = await handler.getBalance();
@@ -79,7 +79,7 @@ async function runExhaustiveTest() {
     });
 
     test('Payment System: sendPayment function exists and validates', async () => {
-        const { sendPayment } = require('./src/crypto');
+        const { sendPayment } = require('../src/crypto');
 
         assert(typeof sendPayment === 'function', 'sendPayment must be a function');
 
@@ -97,7 +97,7 @@ async function runExhaustiveTest() {
     });
 
     test('Price Oracle: Live price fetch works', async () => {
-        const { priceOracle } = require('./src/crypto/PriceOracle');
+        const { priceOracle } = require('../src/crypto/PriceOracle');
 
         const ltcPrice = await priceOracle.getPrice('LTC');
         assert(ltcPrice > 0, 'LTC price must be positive');
@@ -116,7 +116,7 @@ async function runExhaustiveTest() {
     });
 
     test('Price Conversion: USD to crypto works', async () => {
-        const { convertUsdToCrypto } = require('./src/crypto');
+        const { convertUsdToCrypto } = require('../src/crypto');
 
         const ltcAmount = await convertUsdToCrypto(10, 'LTC');
         assert(ltcAmount > 0, 'LTC conversion must return positive amount');
@@ -130,7 +130,7 @@ async function runExhaustiveTest() {
     console.log('\n## TEST 2: Dice Rolling System\n');
 
     test('DiceEngine: Crypto random rolls work', () => {
-        const DiceEngine = require('./src/game/DiceEngine');
+        const DiceEngine = require('../src/game/DiceEngine');
 
         const rolls = [];
         for (let i = 0; i < 50; i++) {
@@ -145,7 +145,7 @@ async function runExhaustiveTest() {
     });
 
     test('ScoreTracker: FT5 game logic with all outcomes', () => {
-        const ScoreTracker = require('./src/game/ScoreTracker');
+        const ScoreTracker = require('../src/game/ScoreTracker');
 
         // Test bot wins scenario
         const tracker1 = new ScoreTracker('test-bot-wins', 5);
@@ -176,7 +176,7 @@ async function runExhaustiveTest() {
     console.log('\n## TEST 3: Message Queue & Vouch System\n');
 
     test('MessageQueue: Rate limiting works', async () => {
-        const { messageQueue } = require('./src/utils/MessageQueue');
+        const { messageQueue } = require('../src/utils/MessageQueue');
 
         assert(typeof messageQueue.send === 'function', 'MessageQueue.send must exist');
 
@@ -215,8 +215,8 @@ async function runExhaustiveTest() {
     console.log('\n## TEST 4: State Machine & Ticket Complete Lifecycle\n');
 
     test('Complete ticket lifecycle: All transitions work', () => {
-        const { TicketStateMachine, STATES } = require('./src/state/StateMachine');
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { TicketStateMachine, STATES } = require('../src/state/StateMachine');
+        const { ticketManager } = require('../src/state/TicketManager');
 
         const testId = `exhaustive-test-${Date.now()}`;
 
@@ -272,7 +272,7 @@ async function runExhaustiveTest() {
     console.log('\n## TEST 5: Regex Pattern & Address Extraction\n');
 
     test('Bet extraction: All formats work', () => {
-        const { extractBetAmounts } = require('./src/utils/regex');
+        const { extractBetAmounts } = require('../src/utils/regex');
 
         const tests = [
             { input: '10v10', expected: 10 },
@@ -289,7 +289,7 @@ async function runExhaustiveTest() {
     });
 
     test('Address extraction: LTC format works', () => {
-        const { extractCryptoAddress } = require('./src/utils/regex');
+        const { extractCryptoAddress } = require('../src/utils/regex');
 
         const testAddr = 'LY7VX5yZgVbEsL3kS9F2a8B4c5D6e7F8g9';
         const messages = [
@@ -311,7 +311,7 @@ async function runExhaustiveTest() {
     console.log('\n## TEST 6: Idempotency & Payment Safety Gates\n');
 
     test('Idempotency: Prevents duplicate payments', () => {
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
 
         const paymentId = `exhaustive-idempotency-${Date.now()}`;
         const address = 'LY7VX5yZgVbEsL3kS9F2a8B4c5D6e7F8g9';
@@ -339,7 +339,7 @@ async function runExhaustiveTest() {
     });
 
     test('Daily limit: Enforced correctly', () => {
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
 
         const maxDaily = config.payment_safety?.max_daily_usd || 500;
         const currentSpend = idempotencyStore.getDailySpend();
@@ -358,7 +358,7 @@ async function runExhaustiveTest() {
     test('Atomic file writes: .tmp safety works', () => {
         const fs = require('fs');
         const path = require('path');
-        const { saveState, loadState } = require('./src/state/persistence');
+        const { saveState, loadState } = require('../src/state/persistence');
 
         // Save should use .tmp file
         const testData = { test: 'exhaustive', timestamp: Date.now() };
@@ -371,8 +371,8 @@ async function runExhaustiveTest() {
     });
 
     test('Ticket persistence: Survives save/restore', () => {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { saveState } = require('./src/state/persistence');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { saveState } = require('../src/state/persistence');
 
         const testId = `persist-test-${Date.now()}`;
         const ticket = ticketManager.createTicket(testId, {
@@ -404,7 +404,7 @@ async function runExhaustiveTest() {
     console.log('══════════════════════════════════════════════════════════\n');
 
     test('Message routing: Ticket detection works', () => {
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { ticketManager } = require('../src/state/TicketManager');
 
         // Simulate: User bets in public channel
         const userId = `flow-test-${Date.now()}`;
@@ -417,18 +417,18 @@ async function runExhaustiveTest() {
     });
 
     test('Full flow: Snipe → Ticket → Payment → Game → Vouch', () => {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
-        const ScoreTracker = require('./src/game/ScoreTracker');
-        const { extractCryptoAddress } = require('./src/utils/regex');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
+        const ScoreTracker = require('../src/game/ScoreTracker');
+        const { extractCryptoAddress } = require('../src/utils/regex');
 
         const userId = `full-flow-${Date.now()}`;
         const channelId = `channel-${Date.now()}`;
 
-        // PHASE 1: Snipe
-        console.log(`\n   [PHASE 1: SNIPE]`);
+        // PHASE 1: Discovery
+        console.log(`\n   [PHASE 1: DISCOVERY]`);
         ticketManager.storePendingWager(userId, 20, 24, 'public-channel', 'TestUser');
-        console.log(`   ✅ Bet sniped: $20 vs $24`);
+        console.log(`   ✅ Bet discovered: $20 vs $24`);
 
         // PHASE 2: Ticket Creation
         console.log(`\n   [PHASE 2: TICKET]`);
@@ -538,7 +538,7 @@ async function runExhaustiveTest() {
         console.log('   ✅ Price conversion (live API)');
         console.log('   ✅ Address extraction (regex verification)');
         console.log('   ✅ Persistence (atomic writes)');
-        console.log('   ✅ Complete flow (snipe to cleanup)');
+        console.log('   ✅ Complete flow (discovery to cleanup)');
         console.log('══════════════════════════════════════════════════════════\n');
         return true;
     }

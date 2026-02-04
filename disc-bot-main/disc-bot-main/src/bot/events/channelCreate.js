@@ -66,18 +66,18 @@ async function handleChannelCreate(channel) {
         if (!existingTicket) {
             let ticketData;
             if (pendingWager) {
-                // We have bet info from a recent snipe!
+                // We have bet info from a recent discovery!
                 ticketData = {
                     opponentId: pendingWager.userId,
                     opponentBet: pendingWager.opponentBet,
                     ourBet: pendingWager.ourBet,
                     sourceChannelId: pendingWager.sourceChannelId,
-                    snipeId: pendingWager.snipeId, // TRACK SNIPE ID
+                    discoveryId: pendingWager.discoveryId, // TRACK DISCOVERY ID
                     autoDetected: true
                 };
                 logger.info('🎫 TICKET_LINKED', {
                     channelId: channel.id,
-                    snipeId: pendingWager.snipeId,
+                    discoveryId: pendingWager.discoveryId,
                     opponentId: pendingWager.userId,
                     opponentBet: pendingWager.opponentBet
                 });

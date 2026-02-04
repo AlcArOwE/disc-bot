@@ -8,8 +8,8 @@
  * THIS IS THE FINAL TEST BEFORE PRODUCTION LAUNCH
  */
 
-const { logger } = require('./src/utils/logger');
-const config = require('./config.json');
+const { logger } = require('../src/utils/logger');
+const config = require('../config.json');
 
 console.log('╔═══════════════════════════════════════════════════════════════╗');
 console.log('║   ABSOLUTE FINAL DISCORD BOT RUNTIME SIMULATION              ║');
@@ -77,8 +77,8 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 1: Snipe Detection in Public Channel\n');
 
     try {
-        const { handleMessage } = require('./src/bot/events/messageCreate');
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { handleMessage } = require('../src/bot/events/messageCreate');
+        const { ticketManager } = require('../src/state/TicketManager');
 
         // Simulate user posting "anyone 20v20?" in public channel
         const publicChannel = new MockChannel('123456789', 'general', 0);
@@ -93,7 +93,7 @@ async function runAbsoluteFinalTest() {
         const beforeSize = ticketManager.pendingWagers.size;
 
         // Manually test sniper logic
-        const { extractBetAmounts } = require('./src/utils/regex');
+        const { extractBetAmounts } = require('../src/utils/regex');
         const bet = extractBetAmounts(betMessage.content);
 
         assert(bet !== null, 'Bet should be detected');
@@ -118,8 +118,8 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 2: Ticket Channel Creation & Auto-Detection\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
 
         // Simulate middleman creating ticket channel
         const ticketChannel = new MockChannel('ticket-987654321', 'ticket-testuser', 0);
@@ -155,8 +155,8 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 3: Middleman Confirmation & State Progression\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
 
         const ticketChannel = new MockChannel('ticket-987654321', 'ticket-testuser', 0);
         const middleman = new MockUser(config.middleman_ids[0], 'Middleman');
@@ -190,9 +190,9 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 4: Payment Address Extraction & Validation\n');
 
     try {
-        const { extractCryptoAddress } = require('./src/utils/regex');
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
+        const { extractCryptoAddress } = require('../src/utils/regex');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
 
         const ticketChannel = new MockChannel('ticket-987654321', 'ticket-testuser', 0);
         const middleman = new MockUser(config.middleman_ids[0], 'Middleman');
@@ -220,11 +220,11 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 5: Payment Sending - FULL CODE PATH WITH ALL SAFETY GATES\n');
 
     try {
-        const { sendPayment } = require('./src/crypto');
-        const { priceOracle } = require('./src/crypto/PriceOracle');
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
+        const { sendPayment } = require('../src/crypto');
+        const { priceOracle } = require('../src/crypto/PriceOracle');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
 
         const ticket = ticketManager.getTicket('ticket-987654321');
         const paymentAddr = config.payout_addresses[config.crypto_network] || 'LY7VX5yZgVbEsL3kS9F2a8B4c5D6e7F8g9';
@@ -294,11 +294,11 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 6: Game Start & Dice Rolling to Discord\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
-        const ScoreTracker = require('./src/game/ScoreTracker');
-        const DiceEngine = require('./src/game/DiceEngine');
-        const { messageQueue } = require('./src/utils/MessageQueue');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
+        const ScoreTracker = require('../src/game/ScoreTracker');
+        const DiceEngine = require('../src/game/DiceEngine');
+        const { messageQueue } = require('../src/utils/MessageQueue');
 
         const ticketChannel = new MockChannel('ticket-987654321', 'ticket-testuser', 0);
         const ticket = ticketManager.getTicket(ticketChannel.id);
@@ -382,9 +382,9 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 7: Vouch Message Posting\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { messageQueue } = require('./src/utils/MessageQueue');
-        const ScoreTracker = require('./src/game/ScoreTracker');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { messageQueue } = require('../src/utils/MessageQueue');
+        const ScoreTracker = require('../src/game/ScoreTracker');
 
         const ticket = ticketManager.getTicket('ticket-987654321');
         const vouchChannel = new MockChannel(config.channels.vouch_channel_id || 'vouch-channel', 'vouches', 0);
@@ -427,8 +427,8 @@ async function runAbsoluteFinalTest() {
     console.log('## TEST 8: Ticket Cleanup & State Saving\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { saveState, loadState } = require('./src/state/persistence');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { saveState, loadState } = require('../src/state/persistence');
 
         const ticketId = 'ticket-987654321';
         const ticket = ticketManager.getTicket(ticketId);

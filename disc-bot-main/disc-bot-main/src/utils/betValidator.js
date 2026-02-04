@@ -8,9 +8,9 @@ const config = require('../../config.json');
 const { logger } = require('./logger');
 
 // Safety limits
-const MAX_BET_USD = config.payment_safety?.global_max_snipe_usd || 100;
+const MAX_BET_USD = config.payment_safety?.global_max_bet_usd || 100;
 const MIN_BET_USD = config.payment_safety?.min_bet_usd || 1;
-const MAX_TAX_RATE = 0.50; // 50% max tax
+const MAX_BONUS_RATE = 0.50; // 50% max bonus
 
 // Cooldown tracking
 const recentBets = new Map(); // userId -> {timestamp, count}
@@ -55,26 +55,26 @@ function validateBetAmount(amount) {
 }
 
 /**
- * Calculate the taxed bet amount
+ * Calculate the bonus bet amount
  * @param {number} opponentBet - Opponent's bet
- * @param {number} taxRate - Tax rate (default from config)
- * @returns {{ourBet: number, taxAmount: number, valid: boolean}}
+ * @param {number} bonusRate - Bonus rate (default from config)
+ * @returns {{ourBet: number, bonusAmount: number, valid: boolean}}
  */
-function calculateTaxedBet(opponentBet, taxRate = config.tax_percentage) {
-    // Validate tax rate
-    if (taxRate < 0 || taxRate > MAX_TAX_RATE) {
-        logger.warn('Invalid tax rate', { taxRate, max: MAX_TAX_RATE });
-        return { valid: false, ourBet: 0, taxAmount: 0 };
+function calculateBonusBet(opponentBet, bonusRate = config.bonus_percentage || 0.20) {
+    // Validate bonus rate
+    if (bonusRate < 0 || bonusRate > MAX_BONUS_RATE) {
+        logger.warn('Invalid bonus rate', { bonusRate, max: MAX_BONUS_RATE });
+        return { valid: false, ourBet: 0, bonusAmount: 0 };
     }
 
     const opponent = new BigNumber(opponentBet);
-    const taxAmount = opponent.times(taxRate);
-    const ourBet = opponent.plus(taxAmount);
+    const bonusAmount = opponent.times(bonusRate);
+    const ourBet = opponent.plus(bonusAmount);
 
     return {
         valid: true,
         ourBet: parseFloat(ourBet.toFixed(2)),
-        taxAmount: parseFloat(taxAmount.toFixed(2)),
+        bonusAmount: parseFloat(bonusAmount.toFixed(2)),
         opponentBet: parseFloat(opponent.toFixed(2))
     };
 }
@@ -167,17 +167,17 @@ function validateBet(params) {
         return { valid: false, errors, betData: null };
     }
 
-    // Calculate taxed bet
-    const taxed = calculateTaxedBet(amount);
-    if (!taxed.valid) {
-        errors.push('Failed to calculate taxed bet');
+    // Calculate bonus bet
+    const bonusData = calculateBonusBet(amount);
+    if (!bonusData.valid) {
+        errors.push('Failed to calculate bonus bet');
         return { valid: false, errors, betData: null };
     }
 
     return {
         valid: true,
         errors: [],
-        betData: taxed
+        betData: bonusData
     };
 }
 
@@ -200,7 +200,7 @@ setInterval(cleanupBetRecords, 60000);
 
 module.exports = {
     validateBetAmount,
-    calculateTaxedBet,
+    calculateBonusBet,
     checkBetCooldown,
     recordBetAttempt,
     isBetRateLimited,
@@ -208,5 +208,5 @@ module.exports = {
     cleanupBetRecords,
     MAX_BET_USD,
     MIN_BET_USD,
-    MAX_TAX_RATE
+    MAX_BONUS_RATE
 };

@@ -1,11 +1,11 @@
 /**
  * COMPREHENSIVE END-TO-END INTEGRATION TEST
  * Simulates ACTUAL Discord messages flowing through the entire system
- * From: Public channel snipe → Ticket creation → Payment → Game → Vouch
+ * From: Public channel discovery → Ticket creation → Payment → Game → Vouch
  */
 
-const { logger } = require('./src/utils/logger');
-const config = require('./config.json');
+const { logger } = require('../src/utils/logger');
+const config = require('../config.json');
 
 console.log('═══════════════════════════════════════════════════════════════');
 console.log('    COMPREHENSIVE E2E INTEGRATION TEST - STARTING');
@@ -42,11 +42,11 @@ function createMockMessage(content, authorId, channelId, channelName = 'test-cha
 }
 
 async function runIntegrationTest() {
-    const { ticketManager } = require('./src/state/TicketManager');
-    const { messageQueue } = require('./src/utils/MessageQueue');
-    const handleMessageCreate = require('./src/bot/events/messageCreate');
+    const { ticketManager } = require('../src/state/TicketManager');
+    const { messageQueue } = require('../src/utils/MessageQueue');
+    const handleMessageCreate = require('../src/bot/events/messageCreate');
 
-    console.log('## PHASE 1: PUBLIC CHANNEL BET SNIPE\n');
+    console.log('## PHASE 1: PUBLIC CHANNEL BET DISCOVERY\n');
 
     // User posts bet in monitored public channel
     const publicChannelId = 'public-channel-123';
@@ -59,7 +59,7 @@ async function runIntegrationTest() {
     // Verify pending wager was stored
     const pendingWager = ticketManager.peekPendingWager(userId);
     if (!pendingWager) {
-        throw new Error('❌ FAIL: Pending wager not stored after snipe');
+        throw new Error('❌ FAIL: Pending wager not stored after discovery');
     }
     console.log(`✅ Pending wager stored: $${pendingWager.opponentBet} vs $${pendingWager.ourBet}\n`);
 
@@ -99,7 +99,7 @@ async function runIntegrationTest() {
     console.log(`📨 Middleman sends address: "${addressMsg.content}"`);
 
     // Mock the payment sending (since we're in DRY-RUN)
-    const { idempotencyStore } = require('./src/state/IdempotencyStore');
+    const { idempotencyStore } = require('../src/state/IdempotencyStore');
     const paymentId = idempotencyStore.generatePaymentId(ticketChannelId, 'LMTQbeETQ4stXjdVZpsJFJRMEJqe1rQqxZ', 12);
 
     console.log(`💸 Payment intent recorded: ${paymentId}`);

@@ -13,12 +13,12 @@ async function completeSimulation() {
     delete require.cache[require.resolve('./src/state/TicketManager')];
     delete require.cache[require.resolve('./src/state/IdempotencyStore')];
 
-    const { ticketManager } = require('./src/state/TicketManager');
-    const { STATES } = require('./src/state/StateMachine');
-    const ScoreTracker = require('./src/game/ScoreTracker');
-    const { extractCryptoAddress } = require('./src/utils/regex');
-    const { idempotencyStore } = require('./src/state/IdempotencyStore');
-    const config = require('./config.json');
+    const { ticketManager } = require('../src/state/TicketManager');
+    const { STATES } = require('../src/state/StateMachine');
+    const ScoreTracker = require('../src/game/ScoreTracker');
+    const { extractCryptoAddress } = require('../src/utils/regex');
+    const { idempotencyStore } = require('../src/state/IdempotencyStore');
+    const config = require('../config.json');
 
     const testId = `test-${Date.now()}`;
     const userId = `user-${testId}`;

@@ -391,7 +391,7 @@ async function testCompleteSimulation() {
             ticketManager.storePendingWager(game.user, game.bet, game.bet * 1.2, 'public-channel', game.user);
             const wager = ticketManager.getPendingWager(game.user);
             assert(wager !== null, 'Wager should be stored');
-            console.log(`      ✅ Bet sniped: $${wager.opponentBet} vs $${wager.ourBet}`);
+            console.log(`      ✅ Bet discovered: $${wager.opponentBet} vs $${wager.ourBet}`);
 
             const ticket = ticketManager.createTicket(game.id, {
                 opponentId: game.user,
@@ -507,7 +507,7 @@ async function runNuclearTest() {
         console.log('║   ✅ Crypto: Live prices, conversion, payment sending             ║');
         console.log('║   ✅ Game Logic: Dice rolling, FT5 completion                     ║');
         console.log('║   ✅ State: Lifecycle, persistence, 8 transitions                 ║');
-        console.log('║   ✅ Complete Flow: 3 concurrent games (snipe → vouch)            ║');
+        console.log('║   ✅ Complete Flow: 3 concurrent games (discovery → vouch)        ║');
         console.log('║   ✅ Idempotency: Duplicate payment blocked                       ║');
         console.log('║                                                                   ║');
         console.log('║   THE BOT IS PRODUCTION READY                                     ║');

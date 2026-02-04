@@ -54,22 +54,6 @@ async function sendWebhook({ title, description, color = 0x3498db, fields = [] }
 }
 
 /**
- * Log a successful snipe
- */
-function logSnipe(channelId, userId, opponentBet, ourBet) {
-    sendWebhook({
-        title: "🎯 Bet Sniped",
-        description: `Found a new bet offer!`,
-        color: 0xf1c40f, // Yellow
-        fields: [
-            { name: "Channel", value: `<#${channelId}>`, inline: true },
-            { name: "User", value: `<@${userId}>`, inline: true },
-            { name: "Offer", value: `$${opponentBet} vs $${ourBet}`, inline: false }
-        ]
-    });
-}
-
-/**
  * Log a game result
  */
 function logGameResult(channelId, winner, netProfit) {
@@ -89,7 +73,7 @@ function logGameResult(channelId, winner, netProfit) {
 /**
  * Log a payment sent
  */
-function logPayment(channelId, amount, txId, network) {
+function logPayment({ channelId, amount, txId, network }) {
     sendWebhook({
         title: "💸 Payment Sent",
         description: `Sent crypto payment via ${network}`,
@@ -104,7 +88,6 @@ function logPayment(channelId, amount, txId, network) {
 
 module.exports = {
     sendWebhook,
-    logSnipe,
     logGameResult,
     logPayment
 };

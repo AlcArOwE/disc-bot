@@ -4,8 +4,8 @@
  * Tests ALL edge cases, failure modes, and race conditions
  */
 
-const { logger } = require('./src/utils/logger');
-const config = require('./config.json');
+const { logger } = require('../src/utils/logger');
+const config = require('../config.json');
 
 console.log('═══════════════════════════════════════════════════════════════');
 console.log('   ULTRA-RIGOROUS FINAL VALIDATION SUITE');
@@ -56,22 +56,22 @@ async function runUltraRigorousValidation() {
 
     // Test 2: All Core Modules Load
     test('All core modules load without errors', () => {
-        require('./src/state/TicketManager');
-        require('./src/state/StateMachine');
-        require('./src/state/IdempotencyStore');
-        require('./src/utils/MessageQueue');
-        require('./src/utils/regex');
-        require('./src/utils/validator');
-        require('./src/crypto/PriceOracle');
-        require('./src/game/ScoreTracker');
-        require('./src/game/DiceEngine');
+        require('../src/state/TicketManager');
+        require('../src/state/StateMachine');
+        require('../src/state/IdempotencyStore');
+        require('../src/utils/MessageQueue');
+        require('../src/utils/regex');
+        require('../src/utils/validator');
+        require('../src/crypto/PriceOracle');
+        require('../src/game/ScoreTracker');
+        require('../src/game/DiceEngine');
     });
 
     console.log('\n## TIER 2: PENDING WAGER TTL & CLEANUP\n');
 
     // Test 3: Pending Wager TTL
     test('Pending wager expires after 5 minutes', () => {
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { ticketManager } = require('../src/state/TicketManager');
         ticketManager.pendingWagers.clear();
 
         // Store a wager
@@ -94,7 +94,7 @@ async function runUltraRigorousValidation() {
     });
 
     test('Pending wager automated cleanup works', () => {
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { ticketManager } = require('../src/state/TicketManager');
         ticketManager.pendingWagers.clear();
 
         // Add old and new wagers
@@ -145,7 +145,7 @@ async function runUltraRigorousValidation() {
 
     // Test 5: Idempotency Store
     test('Idempotency prevents double-payments', () => {
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
         const testId = `test-rigorous-${Date.now()}`;
 
         // Record intent
@@ -168,7 +168,7 @@ async function runUltraRigorousValidation() {
     });
 
     test('Daily spending limit enforced', () => {
-        const { idempotencyStore } = require('./src/state/IdempotencyStore');
+        const { idempotencyStore } = require('../src/state/IdempotencyStore');
         const maxDaily = config.payment_safety?.max_daily_usd || 500;
         const currentSpend = idempotencyStore.getDailySpend();
 
@@ -183,7 +183,7 @@ async function runUltraRigorousValidation() {
 
     // Test 6: FT5 Game Logic
     test('FT5 game logic with ties', () => {
-        const ScoreTracker = require('./src/game/ScoreTracker');
+        const ScoreTracker = require('../src/game/ScoreTracker');
         const tracker = new ScoreTracker('test-ultra', 5);
 
         // Simulate a full game
@@ -210,7 +210,7 @@ async function runUltraRigorousValidation() {
 
     // Test 7: Dice randomness
     test('Dice engine uses crypto.randomInt', () => {
-        const DiceEngine = require('./src/game/DiceEngine');
+        const DiceEngine = require('../src/game/DiceEngine');
 
         // Roll 100 times and check distribution (static method)
         const rolls = [];
@@ -229,8 +229,8 @@ async function runUltraRigorousValidation() {
 
     // Test 8: State Machine Transitions
     test('All state transitions valid', () => {
-        const { STATES } = require('./src/state/StateMachine');
-        const { TicketStateMachine } = require('./src/state/StateMachine');
+        const { STATES } = require('../src/state/StateMachine');
+        const { TicketStateMachine } = require('../src/state/StateMachine');
 
         const ticket = new TicketStateMachine('test-sm', { opponentId: 'test', opponentBet: 10, ourBet: 12 });
 
@@ -256,7 +256,7 @@ async function runUltraRigorousValidation() {
 
     // Test 9: Ticket Manager
     test('Ticket manager operations', () => {
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { ticketManager } = require('../src/state/TicketManager');
         const testChannelId = `test-channel-${Date.now()}`;
 
         // Create ticket
@@ -283,7 +283,7 @@ async function runUltraRigorousValidation() {
 
     // Test 10: Regex Patterns
     test('Bet detection regex', () => {
-        const { extractBetAmounts } = require('./src/utils/regex');
+        const { extractBetAmounts } = require('../src/utils/regex');
 
         const testCases = [
             { input: '10v10', expectedOpponent: 10 },
@@ -302,7 +302,7 @@ async function runUltraRigorousValidation() {
 
 
     test('Crypto address detection', () => {
-        const { extractCryptoAddress } = require('./src/utils/regex');
+        const { extractCryptoAddress } = require('../src/utils/regex');
 
         const ltcAddress = 'LY7VX5yZgVbEsL3kS9F2a8B4c5D6e7F8g9';
         const extracted = extractCryptoAddress(`Send to ${ltcAddress}`, 'LTC');
@@ -313,7 +313,7 @@ async function runUltraRigorousValidation() {
 
     // Test 11: Message Queue
     test('Message queue prevents rate limits', () => {
-        const { messageQueue } = require('./src/utils/MessageQueue');
+        const { messageQueue } = require('../src/utils/MessageQueue');
 
         // Queue should exist and have send method
         if (typeof messageQueue.send !== 'function') {
@@ -331,7 +331,7 @@ async function runUltraRigorousValidation() {
     test('Persistence uses atomic .tmp writes', () => {
         const fs = require('fs');
         const path = require('path');
-        const { saveState } = require('./src/state/persistence');
+        const { saveState } = require('../src/state/persistence');
 
         // The saveState function should write to .tmp first
         // We can verify the function exists and has proper structure

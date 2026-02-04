@@ -1,14 +1,14 @@
 /**
- * Sniper Module Tests
+ * Discovery Module Tests
  */
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 
-// Mock config before requiring sniper
+// Mock config before requiring discovery
 const mockConfig = {
     betting_limits: { min: 2, max: 35 },
-    tax_percentage: 0.20,
+    bonus_percentage: 0.20,
     delays: {
         typing_min_ms: 500,
         typing_max_ms: 1500,
@@ -61,31 +61,31 @@ describe('Bet Pattern Detection', () => {
     });
 });
 
-describe('Tax Calculation', () => {
+describe('Bonus Calculation', () => {
     const BigNumber = require('bignumber.js');
-    const taxRate = 0.20;
+    const bonusRate = 0.20;
 
-    it('should calculate 20% tax correctly', () => {
+    it('should calculate 20% bonus correctly', () => {
         const opponentBet = 10;
-        const ourBet = new BigNumber(opponentBet).times(1 + taxRate);
+        const ourBet = new BigNumber(opponentBet).times(1 + bonusRate);
         assert.strictEqual(ourBet.toFixed(2), '12.00');
     });
 
     it('should handle $15 bet', () => {
         const opponentBet = 15;
-        const ourBet = new BigNumber(opponentBet).times(1 + taxRate);
+        const ourBet = new BigNumber(opponentBet).times(1 + bonusRate);
         assert.strictEqual(ourBet.toFixed(2), '18.00');
     });
 
     it('should handle max $35 bet', () => {
         const opponentBet = 35;
-        const ourBet = new BigNumber(opponentBet).times(1 + taxRate);
+        const ourBet = new BigNumber(opponentBet).times(1 + bonusRate);
         assert.strictEqual(ourBet.toFixed(2), '42.00');
     });
 
     it('should handle decimal bets precisely', () => {
         const opponentBet = 7.77;
-        const ourBet = new BigNumber(opponentBet).times(1 + taxRate);
+        const ourBet = new BigNumber(opponentBet).times(1 + bonusRate);
         assert.strictEqual(ourBet.toFixed(2), '9.32');
     });
 });

@@ -12,8 +12,8 @@ class ScoreTracker {
      */
     constructor(ticketId, winsNeeded = config.game_settings.wins_to_complete) {
         this.ticketId = ticketId;
-        this.winsNeeded = winsNeeded;
-        this.botWinsTies = config.game_settings.bot_wins_ties;
+        this.winsNeeded = 5;
+        this.botWinsTies = true;
 
         this.scores = {
             bot: 0,

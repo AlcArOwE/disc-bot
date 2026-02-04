@@ -37,7 +37,7 @@ test('Environment File (.env)', () => {
 
 // TEST 2: Config File Valid
 test('Config File (config.json)', () => {
-    const config = require('./config.json');
+    const config = require('../config.json');
     if (!config.middleman_ids || config.middleman_ids.length === 0) {
         throw new Error('No middleman IDs configured');
     }
@@ -51,19 +51,19 @@ test('Config File (config.json)', () => {
 
 // TEST 3: All Core Modules Load
 test('Core Module Loading', () => {
-    require('./src/utils/logger');
-    require('./src/utils/regex');
-    require('./src/utils/validator');
-    require('./src/state/TicketManager');
-    require('./src/state/IdempotencyStore');
-    require('./src/crypto/PriceOracle');
-    require('./src/game/ScoreTracker');
-    require('./src/game/DiceEngine');
+    require('../src/utils/logger');
+    require('../src/utils/regex');
+    require('../src/utils/validator');
+    require('../src/state/TicketManager');
+    require('../src/state/IdempotencyStore');
+    require('../src/crypto/PriceOracle');
+    require('../src/game/ScoreTracker');
+    require('../src/game/DiceEngine');
 });
 
 // TEST 4: Regex Patterns Work
 test('Regex Pattern Validation', () => {
-    const { extractBetAmounts, extractCryptoAddress, extractDiceResult } = require('./src/utils/regex');
+    const { extractBetAmounts, extractCryptoAddress, extractDiceResult } = require('../src/utils/regex');
 
     // Test bet extraction
     const bet1 = extractBetAmounts('10v10');
@@ -86,7 +86,7 @@ test('Regex Pattern Validation', () => {
 
 // TEST 5: State Machine Transitions
 test('State Machine Logic', () => {
-    const { STATES } = require('./src/state/StateMachine');
+    const { STATES } = require('../src/state/StateMachine');
 
     // Verify all critical states exist
     const requiredStates = ['AWAITING_TICKET', 'AWAITING_MIDDLEMAN', 'AWAITING_PAYMENT_ADDRESS',
@@ -96,7 +96,7 @@ test('State Machine Logic', () => {
     }
 
     // Verify state machine class exists
-    const { TicketStateMachine } = require('./src/state/StateMachine');
+    const { TicketStateMachine } = require('../src/state/StateMachine');
     const machine = new TicketStateMachine('test-channel', { opponentId: 'test', opponentBet: 10, ourBet: 12 });
     if (!machine) throw new Error('StateMachine failed to instantiate');
     if (machine.state !== STATES.AWAITING_TICKET) throw new Error('Initial state incorrect');
@@ -104,7 +104,7 @@ test('State Machine Logic', () => {
 
 // TEST 6: Score Tracker Logic
 test('Game Logic (FT5 Score Tracking)', () => {
-    const ScoreTracker = require('./src/game/ScoreTracker');
+    const ScoreTracker = require('../src/game/ScoreTracker');
     const tracker = new ScoreTracker('test-channel', 5);
 
     // Simulate a game
@@ -126,7 +126,7 @@ test('Game Logic (FT5 Score Tracking)', () => {
 
 // TEST 7: Idempotency Store
 test('Idempotency Store (Double-Payment Prevention)', () => {
-    const { IdempotencyStore, PaymentState } = require('./src/state/IdempotencyStore');
+    const { IdempotencyStore, PaymentState } = require('../src/state/IdempotencyStore');
     const store = new IdempotencyStore();
 
     const paymentId = 'test-payment-nuclear-validation';
@@ -151,14 +151,14 @@ test('Idempotency Store (Double-Payment Prevention)', () => {
 
 // TEST 8: Price Oracle (with fallback)
 test('Price Oracle Initialization', () => {
-    const { priceOracle } = require('./src/crypto/PriceOracle');
+    const { priceOracle } = require('../src/crypto/PriceOracle');
     if (!priceOracle) throw new Error('Price oracle not initialized');
     // Note: We can't test actual API calls without network, but we verify it loads
 });
 
 // TEST 9: Crypto Handlers Initialize
 test('Crypto Handlers Load', () => {
-    const LitecoinHandler = require('./src/crypto/LitecoinHandler');
+    const LitecoinHandler = require('../src/crypto/LitecoinHandler');
     const handler = new LitecoinHandler();
     // Just verify it can be instantiated
     if (!handler) throw new Error('LTC handler failed to instantiate');
@@ -166,7 +166,7 @@ test('Crypto Handlers Load', () => {
 
 // TEST 10: Message Queue
 test('Message Queue Logic', () => {
-    const { MessageQueue } = require('./src/utils/MessageQueue');
+    const { MessageQueue } = require('../src/utils/MessageQueue');
     const queue = new MessageQueue();
     if (!queue) throw new Error('Message queue failed to instantiate');
     if (typeof queue.send !== 'function') throw new Error('Message queue missing send method');
@@ -174,8 +174,8 @@ test('Message Queue Logic', () => {
 
 // TEST 11: Validator Functions
 test('Validator Functions', () => {
-    const { validateBetAmount, isMiddleman, validatePaymentAddress } = require('./src/utils/validator');
-    const config = require('./config.json');
+    const { validateBetAmount, isMiddleman, validatePaymentAddress } = require('../src/utils/validator');
+    const config = require('../config.json');
 
     // Test bet validation
     const valid = validateBetAmount(10);
@@ -194,7 +194,7 @@ test('Validator Functions', () => {
 
 // TEST 12: Persistence Layer
 test('Persistence (Atomic File Writes)', () => {
-    const { saveState, loadState } = require('./src/state/persistence');
+    const { saveState, loadState } = require('../src/state/persistence');
     // Just verify they can be called
     if (typeof saveState !== 'function') throw new Error('saveState not a function');
     if (typeof loadState !== 'function') throw new Error('loadState not a function');
@@ -202,7 +202,7 @@ test('Persistence (Atomic File Writes)', () => {
 
 // TEST 13: Logger
 test('Logger Initialization', () => {
-    const { logger } = require('./src/utils/logger');
+    const { logger } = require('../src/utils/logger');
     if (!logger) throw new Error('Logger not initialized');
     if (typeof logger.info !== 'function') throw new Error('Logger missing info method');
     if (typeof logger.error !== 'function') throw new Error('Logger missing error method');
@@ -210,7 +210,7 @@ test('Logger Initialization', () => {
 
 // TEST 14: Ticket Manager
 test('Ticket Manager Operations', () => {
-    const { ticketManager } = require('./src/state/TicketManager');
+    const { ticketManager } = require('../src/state/TicketManager');
 
     // Test ticket creation
     const ticket = ticketManager.createTicket('test-channel-nuclear', {

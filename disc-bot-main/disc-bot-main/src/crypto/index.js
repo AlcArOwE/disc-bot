@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const config = require('../../config.json');
 const { logger } = require('../utils/logger');
 
-let LitecoinHandler, SolanaHandler, BitcoinHandler;
+let LitecoinHandler, SolanaHandler;
 
 // Lazy load handlers to avoid requiring all libraries
 function getHandler(network = config.crypto_network) {
@@ -15,9 +15,6 @@ function getHandler(network = config.crypto_network) {
         case 'SOL':
             if (!SolanaHandler) SolanaHandler = require('./SolanaHandler');
             return new SolanaHandler();
-        case 'BTC':
-            if (!BitcoinHandler) BitcoinHandler = require('./BitcoinHandler');
-            return new BitcoinHandler();
         default:
             throw new Error(`Unsupported network: ${net}`);
     }

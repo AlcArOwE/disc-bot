@@ -7,8 +7,8 @@
  * THIS IS THE FINAL TEST - MAKE OR BREAK
  */
 
-const { logger } = require('./src/utils/logger');
-const config = require('./config.json');
+const { logger } = require('../src/utils/logger');
+const config = require('../config.json');
 
 console.log('╔═══════════════════════════════════════════════════════════════╗');
 console.log('║        ULTIMATE HANDLER EXECUTION TEST                        ║');
@@ -95,7 +95,7 @@ async function runUltimateTest() {
 
     try {
         // Clear any existing state
-        const { ticketManager } = require('./src/state/TicketManager');
+        const { ticketManager } = require('../src/state/TicketManager');
         ticketManager.tickets.clear();
         ticketManager.pendingWagers.clear();
 
@@ -117,7 +117,7 @@ async function runUltimateTest() {
         console.log(`   Channel: #${publicChannel.name}\n`);
 
         // Load and execute ACTUAL messageCreate handler
-        const handleMessageCreate = require('./src/bot/events/messageCreate');
+        const handleMessageCreate = require('../src/bot/events/messageCreate');
 
         // Execute ACTUAL handler
         await handleMessageCreate(betMessage);
@@ -146,8 +146,8 @@ async function runUltimateTest() {
     console.log('═══════════════════════════════════════════════════════════════\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
         const client = new MockClient();
 
         console.log('## TEST 2: Ticket Channel Detection\n');
@@ -162,7 +162,7 @@ async function runUltimateTest() {
         console.log(`   Middleman creates: #${ticketChannel.name}`);
 
         // Should auto-create ticket and link to pending wager
-        const handleMessageCreate = require('./src/bot/events/messageCreate');
+        const handleMessageCreate = require('../src/bot/events/messageCreate');
         await handleMessageCreate(ticketCreateMsg);
 
         // Verify ticket was created
@@ -189,9 +189,9 @@ async function runUltimateTest() {
     console.log('═══════════════════════════════════════════════════════════════\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
-        const handleMessageCreate = require('./src/bot/events/messageCreate');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
+        const handleMessageCreate = require('../src/bot/events/messageCreate');
         const client = new MockClient();
 
         const ticketChannel = new MockChannel('ticket-999888777', 'ticket-testuser', 0);
@@ -257,10 +257,10 @@ async function runUltimateTest() {
     console.log('═══════════════════════════════════════════════════════════════\n');
 
     try {
-        const { ticketManager } = require('./src/state/TicketManager');
-        const { STATES } = require('./src/state/StateMachine');
-        const handleMessageCreate = require('./src/bot/events/messageCreate');
-        const DiceEngine = require('./src/game/DiceEngine');
+        const { ticketManager } = require('../src/state/TicketManager');
+        const { STATES } = require('../src/state/StateMachine');
+        const handleMessageCreate = require('../src/bot/events/messageCreate');
+        const DiceEngine = require('../src/game/DiceEngine');
         const client = new MockClient();
 
         const ticketChannel = new MockChannel('ticket-999888777', 'ticket-testuser', 0);
@@ -316,7 +316,7 @@ async function runUltimateTest() {
     console.log('═══════════════════════════════════════════════════════════════\n');
 
     try {
-        const handleMessageCreate = require('./src/bot/events/messageCreate');
+        const handleMessageCreate = require('../src/bot/events/messageCreate');
         const client = new MockClient();
 
         console.log('## TEST 7: Handler Resilience to Invalid Input\n');

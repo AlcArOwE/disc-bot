@@ -3,7 +3,7 @@
  * 
  * A sophisticated automated wagering bot that:
  * - Monitors Discord channels for bet offers (XvX format)
- * - Calculates tax (configured in config.json) and responds to valid bets
+ * - Calculates 20% bonus (configured in config.json) and responds to valid bets
  * - Handles full ticket lifecycle with state machine
  * - Sends cryptocurrency payments automatically
  * - Plays first-to-5 dice games
@@ -23,8 +23,10 @@ const handleChannelCreate = require('./bot/events/channelCreate');
 const { shutdown } = require('./state/persistence');
 const { logger } = require('./utils/logger');
 const config = require('../config.json');
+const TicketDiscovery = require('./bot/TicketDiscovery');
 const { execSync } = require('child_process');
 const path = require('path');
+const TicketWatchdog = require('./state/TicketWatchdog');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INVARIANT 5: SINGLE-INSTANCE LOCK (Prevent "two bots running")
@@ -212,10 +214,14 @@ validateStartup();
 // Create Discord client
 const client = createClient(discordClientOptions);
 
+// Initialize Ticket Discovery service
+const ticketDiscovery = new TicketDiscovery(client);
+
 // Register event handlers
-client.on('ready', () => handleReady(client));
+client.on('ready', () => handleReady(client, ticketDiscovery));
 client.on('messageCreate', (message) => handleMessageCreate(message));
-client.on('channelCreate', (channel) => handleChannelCreate(channel));
+client.on('channelCreate', (channel) => ticketDiscovery.handleChannelCreate(channel));
+client.on('channelUpdate', (oldC, newC) => ticketDiscovery.handleChannelUpdate(oldC, newC));
 client.on('channelDelete', (channel) => {
     const { handleChannelDelete } = require('./bot/handlers/ticket');
     handleChannelDelete(channel);
@@ -234,7 +240,10 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 
 // Error handling
 client.on('error', (error) => {
-    logger.error('Discord client error', { error: error.message });
+    logger.error('Discord client error', {
+        error: error.message,
+        stack: error.stack
+    });
 });
 
 client.on('warn', (warning) => {
@@ -294,6 +303,12 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start the bot
 logger.info('Starting Discord Wagering Bot...');
 client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        // Startup Watchdog
+        const watchdog = new TicketWatchdog(client);
+        watchdog.start();
+        client.watchdog = watchdog; // Attach to client for debugging
+    })
     .catch((error) => {
         logger.error('Failed to login', { error: error.message });
         process.exit(1);
