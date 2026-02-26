@@ -42,12 +42,6 @@ async function main() {
     // Test 1: Nuclear validation (most comprehensive)
     const nuclearTestPath = path.join(__dirname, 'tests', 'NUCLEAR_FINAL_TEST.js');
     if (fs.existsSync(nuclearTestPath)) {
-        // Fix paths in nuclear test before running
-        let content = fs.readFileSync(nuclearTestPath, 'utf8');
-        content = content.replace(/require\('\.\/src\//g, "require('../src/");
-        content = content.replace(/require\('\.\/config\.json'\)/g, "require('../config.json')");
-        fs.writeFileSync(nuclearTestPath, content);
-
         await runTest('Nuclear Final Test', nuclearTestPath);
     }
 

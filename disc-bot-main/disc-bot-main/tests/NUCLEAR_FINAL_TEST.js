@@ -520,18 +520,20 @@ async function runNuclearTest() {
 }
 
 // Run the test
-runNuclearTest()
+const nuclearTestPromise = runNuclearTest()
     .then(success => {
         if (success) {
             console.log('✅ NUCLEAR TEST PASSED - BOT IS BULLETPROOF\n');
-            process.exit(0);
+            return true;
         } else {
             console.log('❌ NUCLEAR TEST FAILED - DO NOT DEPLOY\n');
-            process.exit(1);
+            throw new Error('Nuclear test failed');
         }
     })
     .catch(error => {
         console.error('\n❌ CATASTROPHIC ERROR:', error.message);
         console.error(error.stack);
-        process.exit(1);
+        throw error;
     });
+
+module.exports = nuclearTestPromise;
